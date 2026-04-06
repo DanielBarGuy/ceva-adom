@@ -647,13 +647,14 @@ async function showMap(){
 
   try{
     // Server computes Israel-time 24h window — no client-side timezone math needed
-    const evRes = await fetch('/api/events?limit=50000&hours=24');
+    const evRes = await fetch('/api/events?limit=2000&hours=24');
     const allMapEvents = await evRes.json();
     const EXCLUDED_CATS = ['סיום אירוע', 'האירוע הסתיים', 'בדקות הקרובות צפויות להתקבל התרעות באזורך'];
     const mapEvents = allMapEvents.filter(e => !EXCLUDED_CATS.includes(e.category_desc));
     const uniqueCount = new Set(mapEvents.flatMap(e=>e.locations)).size;
+    const MAX_ROUNDS = 8;
     let round=0;
-    while(true){
+    while(round < MAX_ROUNDS){
       round++;
       loadTxt.textContent = round===1?`טוען ${uniqueCount} יישובים (24 שע')...`:`עדכון מיקומים (${round})...`;
       const res  = await fetch('/api/locations?hours=24');
@@ -663,11 +664,11 @@ async function showMap(){
       delete data._pending;
       locationsData = data;
       const placed  = placeMarkers(mapEvents);
-      if(pending===0){ loadEl.style.display='none'; break; }
+      if(pending===0 || currentView!=='map'){ loadEl.style.display='none'; break; }
       loadTxt.textContent=`נמצאו ${placed} יישובים — עוד ${pending} בתהליך...`;
       await new Promise(r=>setTimeout(r,5000));
-      if(currentView!=='map') break;
     }
+    loadEl.style.display='none';
   }catch(err){
     loadTxt.textContent='שגיאה: '+err.message;
     setTimeout(()=>{ loadEl.style.display='none'; },3000);
@@ -684,7 +685,7 @@ async function loadEvents(manual=false){
   dot.classList.add('loading');
 
   try{
-    const res = await fetch('/api/events?limit=50000'+getDateParams());
+    const res = await fetch('/api/events?limit=2000'+getDateParams());
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(data.error) throw new Error(data.error);
@@ -722,14 +723,14 @@ async function loadEvents(manual=false){
 function startCountdown(){
   if(countdownTimer) clearInterval(countdownTimer);
   if(refreshTimer)   clearTimeout(refreshTimer);
-  countdownVal = 5;
+  countdownVal = 30;
   countdownTimer = setInterval(()=>{
     countdownVal--;
     document.getElementById('countdown').textContent =
       countdownVal>0?`רענון בעוד ${countdownVal} שניות`:'מרענן...';
     if(countdownVal<=0) clearInterval(countdownTimer);
   },1000);
-  refreshTimer = setTimeout(()=>loadEvents(false), 5000);
+  refreshTimer = setTimeout(()=>loadEvents(false), 30000);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
