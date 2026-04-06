@@ -1,0 +1,12 @@
+# Database
+alerts.db
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Claude
+.claude/
+
+# Node modules
+node_modules/
