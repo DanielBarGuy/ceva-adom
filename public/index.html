@@ -421,16 +421,6 @@
       border-color: var(--red);
       color: #fff;
     }
-    .order-badge {
-      font-size: .68rem;
-      font-weight: 700;
-      color: var(--red-soft);
-      background: rgba(214,48,49,.12);
-      border: 1px solid rgba(214,48,49,.28);
-      border-radius: 5px;
-      padding: 1px 7px;
-      letter-spacing: .02em;
-    }
 
     /* ── Refresh indicator ── */
     .refresh-ind {
@@ -937,7 +927,7 @@ function pagerHtml(total){
 
 function jumpToOldest(){
   fetchAsc    = true;
-  currentPage = 0;
+  currentPage = -1; // -1 = go to last page after load
   loadEvents(true);
 }
 function jumpToNewest(){
@@ -975,12 +965,9 @@ function eventRowHtml(ev, cls='event-row', idx=0){
 }
 
 function renderList(c, data){
-  const page      = data.slice(currentPage*PAGE_SIZE,(currentPage+1)*PAGE_SIZE);
-  const orderTag  = fetchAsc
-    ? `<span class="order-badge">מהישן לחדש ↑</span>`
-    : '';
+  const page = data.slice(currentPage*PAGE_SIZE,(currentPage+1)*PAGE_SIZE);
   c.innerHTML =
-    `<div class="section-title">${data.reduce((s,e)=>s+e.count,0).toLocaleString()} התרעות ${orderTag}</div>` +
+    `<div class="section-title">${data.reduce((s,e)=>s+e.count,0).toLocaleString()} התרעות</div>` +
     pagerHtml(data.length) +
     `<div class="events-list">${page.map((ev,i)=>eventRowHtml(ev,'event-row',i)).join('')}</div>` +
     pagerHtml(data.length);
@@ -1167,6 +1154,14 @@ async function loadEvents(manual=false){
     if(data.error) throw new Error(data.error);
 
     allEvents = data;
+
+    if (fetchAsc) {
+      allEvents.reverse(); // flip to DESC visual order (oldest at bottom of last page)
+      if (currentPage === -1) {
+        // land on last page = absolute oldest events
+        currentPage = Math.max(0, Math.ceil(allEvents.length / PAGE_SIZE) - 1);
+      }
+    }
 
     const now = new Date();
     document.getElementById('lastUpdated').innerHTML =
