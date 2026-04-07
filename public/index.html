@@ -375,6 +375,7 @@
     .event-body  { flex: 1; min-width: 0; }
     .event-locs  { font-size: .88rem; color: var(--text); line-height: 1.55; word-break: break-word; margin-top: 5px; }
     .event-count { font-size: .71rem; color: var(--text-muted); margin-top: 4px; }
+    .locs-more   { font-size: .78rem; color: var(--text-muted); font-style: italic; }
 
     /* ── Grid view ── */
     .events-grid {
@@ -934,7 +935,7 @@ function eventRowHtml(ev, cls='event-row', idx=0){
       <div class="ev-divider"></div>
       <div class="event-body">
         <div><span class="cat-badge">${esc(ev.category_desc||'–')}</span></div>
-        <div class="event-locs">${esc(ev.locations.join(' · '))}</div>
+        <div class="event-locs">${(()=>{const MAX=8;const shown=ev.locations.slice(0,MAX);const rest=ev.count-MAX;return esc(shown.join(' · '))+(rest>0?` <span class="locs-more">ועוד ${rest}...</span>`:'');})()}</div>
         ${ev.count>1 ? `<div class="event-count">${ev.count} יישובים &nbsp;🗺</div>` : '<div class="event-count">🗺</div>'}
       </div>
     </div>`;
