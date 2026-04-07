@@ -646,18 +646,25 @@ async function showMap(){
   loadEl.style.display = 'flex';
 
   try{
-    // Server computes Israel-time 24h window — no client-side timezone math needed
-    const evRes = await fetch('/api/events?limit=2000&hours=24');
+    const evRes = await fetch('/api/events?limit=50000');
     const allMapEvents = await evRes.json();
+
+    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
     const EXCLUDED_CATS = ['סיום אירוע', 'האירוע הסתיים', 'בדקות הקרובות צפויות להתקבל התרעות באזורך'];
-    const mapEvents = allMapEvents.filter(e => !EXCLUDED_CATS.includes(e.category_desc));
+
+    const mapEvents = allMapEvents.filter(e => {
+      const safeDateStr = e.alertDate.replace(' ', 'T');
+      const eventTime = new Date(safeDateStr).getTime();
+      return eventTime >= twentyFourHoursAgo && !EXCLUDED_CATS.includes(e.category_desc);
+    });
+
     const uniqueCount = new Set(mapEvents.flatMap(e=>e.locations)).size;
     const MAX_ROUNDS = 8;
     let round=0;
     while(round < MAX_ROUNDS){
       round++;
       loadTxt.textContent = round===1?`טוען ${uniqueCount} יישובים (24 שע')...`:`עדכון מיקומים (${round})...`;
-      const res  = await fetch('/api/locations?hours=24');
+      const res  = await fetch('/api/locations');
       const data = await res.json();
       if(data.error) throw new Error(data.error);
       const pending = data._pending||0;
