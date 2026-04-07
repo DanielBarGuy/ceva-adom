@@ -100,10 +100,10 @@ async function fetchAndStore() {
   const resp = await fetch(OREF_URL, { headers: OREF_HEADERS });
   const text = await resp.text();
   const data = text.trim() ? JSON.parse(text) : [];
-  if (!Array.isArray(data)) return 0;
+  if (!Array.isArray(data)) return [];
 
   return new Promise((resolve, reject) => {
-    let added = 0;
+    const inserted = [];
     db.serialize(() => {
       const stmt = db.prepare(
         'INSERT OR IGNORE INTO alerts (rid,data,alert_date,category,category_desc,matrix_id) VALUES (?,?,?,?,?,?)'
@@ -112,10 +112,21 @@ async function fetchAndStore() {
         stmt.run(
           r.rid, r.data || '', r.alertDate || '',
           r.category, r.category_desc || '', r.matrix_id,
-          function(err) { if (!err && this.changes > 0) added++; }
+          function(err) {
+            if (!err && this.changes > 0) {
+              inserted.push({
+                rid          : r.rid,
+                alertDate    : r.alertDate || '',
+                locations    : r.data ? [r.data] : [],
+                category     : r.category,
+                category_desc: r.category_desc || '',
+                count        : r.data ? 1 : 0,
+              });
+            }
+          }
         );
       }
-      stmt.finalize(err => err ? reject(err) : resolve(added));
+      stmt.finalize(err => err ? reject(err) : resolve(inserted));
     });
   });
 }
@@ -123,10 +134,13 @@ async function fetchAndStore() {
 function startFetchLoop() {
   const loop = async () => {
     try {
-      const added = await fetchAndStore();
-      if (added) console.log(`[fetch] +${added} new alerts`);
+      const inserted = await fetchAndStore();
+      if (inserted.length) {
+        console.log(`[fetch] +${inserted.length} new alerts`);
+        broadcastNewAlerts(inserted);
+      }
     } catch (e) { console.error('[fetch] error:', e.message); }
-    setTimeout(loop, 30000);
+    setTimeout(loop, 5000);
   };
   loop();
 }
@@ -159,6 +173,34 @@ async function queryEvents(fromIso, toIso, limit = 2000) {
 // ── Static files ──────────────────────────────────────────────────────────────
 
 app.use(express.static(path.join(BASE_DIR, 'public')));
+
+// ── No-cache middleware ───────────────────────────────────────────────────────
+
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
+// ── SSE ───────────────────────────────────────────────────────────────────────
+
+const clients = new Set();
+
+app.get('/api/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Connection', 'keep-alive');
+  res.write('retry: 2000\n\n');
+  clients.add(res);
+  req.on('close', () => { clients.delete(res); });
+});
+
+function broadcastNewAlerts(alerts) {
+  if (!alerts.length) return;
+  const payload = `data: ${JSON.stringify(alerts)}\n\n`;
+  for (const client of clients) client.write(payload);
+}
 
 // ── API routes ────────────────────────────────────────────────────────────────
 
@@ -201,7 +243,7 @@ app.get('/api/stats', async (req, res) => {
 
 loadGeoCache();
 fetchAndStore()
-  .then(n => console.log(`[init] fetched ${n} new alerts`))
+  .then(items => console.log(`[init] fetched ${items.length} new alerts`))
   .catch(e => console.error('[init] fetch failed:', e.message));
 startFetchLoop();
 

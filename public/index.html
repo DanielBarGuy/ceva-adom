@@ -297,6 +297,7 @@ let refreshTimer   = null;
 let countdownTimer = null;
 let countdownVal   = 15;
 
+let alertsStream  = null;
 let gMap          = null;
 let gClusterer    = null;
 let gInfoWindow   = null;
@@ -730,18 +731,35 @@ async function loadEvents(manual=false){
 function startCountdown(){
   if(countdownTimer) clearInterval(countdownTimer);
   if(refreshTimer)   clearTimeout(refreshTimer);
-  countdownVal = 30;
+  countdownVal = 5;
   countdownTimer = setInterval(()=>{
     countdownVal--;
     document.getElementById('countdown').textContent =
       countdownVal>0?`רענון בעוד ${countdownVal} שניות`:'מרענן...';
     if(countdownVal<=0) clearInterval(countdownTimer);
   },1000);
-  refreshTimer = setTimeout(()=>loadEvents(false), 30000);
+  refreshTimer = setTimeout(()=>loadEvents(false), 5000);
+}
+
+function connectStream(){
+  if(alertsStream) alertsStream.close();
+  alertsStream = new EventSource('/api/stream');
+  alertsStream.onmessage = (event) => {
+    try {
+      const incoming = JSON.parse(event.data);
+      if(!Array.isArray(incoming) || !incoming.length) return;
+      loadEvents(false);
+    } catch(err) { console.error('SSE parse error:', err); }
+  };
+  alertsStream.onerror = () => {
+    if(alertsStream){ alertsStream.close(); alertsStream = null; }
+    setTimeout(connectStream, 2000);
+  };
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
 loadEvents(false);
+connectStream();
 </script>
 <footer class="site-footer">
   Built &amp; designed by <span>DanielBG</span> &nbsp;·&nbsp; כל הזכויות שמורות
