@@ -1122,16 +1122,26 @@ async function loadEvents(page = 1, manual = false){
   }
 
   try{
-    const res = await fetch(`/api/events?page=${page}&pageSize=${PAGE_SIZE}${getDateParams()}`);
+    const res = await fetch(`/api/events?page=${page}&pageSize=${PAGE_SIZE}&limit=2000${getDateParams()}`);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(data.error) throw new Error(data.error);
 
-    allEvents   = data.items;
-    currentPage = data.page;
-    totalPages  = data.totalPages;
-    totalCount  = data.total;
-    totalAlerts = data.totalAlerts;
+    // Support both paginated (new server) and legacy array (old server)
+    const isLegacy = Array.isArray(data);
+    if (isLegacy) {
+      totalPages  = Math.ceil(data.length / PAGE_SIZE);
+      totalCount  = data.length;
+      totalAlerts = data.reduce((s,e)=>s+e.count,0);
+      currentPage = Math.min(page, totalPages);
+      allEvents   = data.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+    } else {
+      allEvents   = data.items;
+      currentPage = data.page;
+      totalPages  = data.totalPages;
+      totalCount  = data.total;
+      totalAlerts = data.totalAlerts;
+    }
 
     const now = new Date();
     document.getElementById('lastUpdated').innerHTML =
