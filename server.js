@@ -201,6 +201,18 @@ function startLiveLoop() {
   loop();
 }
 
+// ── Map-data cache ────────────────────────────────────────────────────────────
+
+let mapDataCache     = null;
+let mapDataCacheTime = 0;
+const MAP_CACHE_TTL  = 60 * 1000; // 60 seconds
+
+const MAP_EXCLUDED_CATS = new Set([
+  'סיום אירוע',
+  'האירוע הסתיים',
+  'בדקות הקרובות צפויות להתקבל התרעות באזורך',
+]);
+
 // ── Query helpers ─────────────────────────────────────────────────────────────
 
 async function queryEvents(fromIso, toIso, limit = 2000) {
@@ -254,6 +266,7 @@ app.get('/api/stream', (req, res) => {
 
 function broadcastNewAlerts(alerts) {
   if (!alerts.length) return;
+  mapDataCache = null; // invalidate map cache so next open gets fresh data
   const payload = `data: ${JSON.stringify(alerts)}\n\n`;
   for (const client of clients) client.write(payload);
 }
@@ -283,6 +296,60 @@ app.get('/api/geocode', async (req, res) => {
     const names = (req.query.names || '').split(',').map(n => n.trim()).filter(Boolean);
     if (!names.length) return res.status(400).json({ error: 'missing names parameter' });
     res.json(await geocodeBatch(names, 100));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/map-data', async (req, res) => {
+  try {
+    const hours = Math.min(parseInt(req.query.hours) || 24, 168);
+
+    // Serve from cache if fresh
+    if (mapDataCache && (Date.now() - mapDataCacheTime) < MAP_CACHE_TTL) {
+      return res.json(mapDataCache);
+    }
+
+    const since = new Date(Date.now() - hours * 3600 * 1000)
+      .toISOString().replace('T', ' ').slice(0, 19);
+
+    const rows = await dbAll(
+      `SELECT data, alert_date, category_desc
+       FROM alerts
+       WHERE alert_date >= ?
+         AND category_desc NOT IN (?, ?, ?)
+       ORDER BY alert_date DESC`,
+      [since, ...MAP_EXCLUDED_CATS]
+    );
+
+    // Aggregate by location (keep up to 8 latest events each)
+    const byLoc = {};
+    for (const row of rows) {
+      const name = (row.data || '').trim();
+      if (!name) continue;
+      if (!byLoc[name]) byLoc[name] = { name, count: 0, events: [] };
+      byLoc[name].count++;
+      if (byLoc[name].events.length < 8)
+        byLoc[name].events.push({ alertDate: row.alert_date, category_desc: row.category_desc || '' });
+    }
+
+    // Geocode any missing locations (up to 50 new ones per request)
+    const names = Object.keys(byLoc);
+    await geocodeBatch(names, 50);
+
+    // Build response — only locations that have coordinates
+    const locations = names
+      .filter(n => geocache[n])
+      .map(n => ({
+        name   : n,
+        lat    : geocache[n][0],
+        lng    : geocache[n][1],
+        count  : byLoc[n].count,
+        events : byLoc[n].events,
+      }));
+
+    const result = { generatedAt: new Date().toISOString(), hours, locations };
+    mapDataCache     = result;
+    mapDataCacheTime = Date.now();
+    res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

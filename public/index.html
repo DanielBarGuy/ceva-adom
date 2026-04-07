@@ -671,13 +671,15 @@ let refreshTimer   = null;
 let countdownTimer = null;
 let countdownVal   = 15;
 
-let alertsStream  = null;
-let gMap          = null;
-let gClusterer    = null;
-let gInfoWindow   = null;
-let gMarkers      = [];
-let locationsData = null;
-let locFetching   = false;
+let alertsStream     = null;
+let gMap             = null;
+let gClusterer       = null;
+let gInfoWindow      = null;
+let gMarkers         = [];
+let mapLoading       = false;
+let lastMapSig       = '';
+let sseConnected     = false;
+let mapRefreshTimer  = null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -765,8 +767,8 @@ function setOperation(from, to, label) {
     document.getElementById('btnAll').classList.remove('active');
   }
 
-  currentPage   = 0;
-  locationsData = null;
+  currentPage = 0;
+  lastMapSig  = ''; // force map rebuild if user switches back to map
   loadEvents(true);
 }
 
@@ -830,9 +832,9 @@ function filtered(){
 function setView(v){
   currentView = v;
   currentPage = 0;
-  ['list','grid','map'].forEach(n => {
-    document.getElementById('btn'+n.charAt(0).toUpperCase()+n.slice(1))
-      .classList.toggle('active', n===v);
+  ['list','map'].forEach(n => {
+    const btn = document.getElementById('btn' + n.charAt(0).toUpperCase() + n.slice(1));
+    if (btn) btn.classList.toggle('active', n === v);
   });
   const main    = document.getElementById('mainContent');
   const mapWrap = document.getElementById('mapWrap');
@@ -996,32 +998,31 @@ function buildPopup(name, events){
   </div>`;
 }
 
-function placeMarkers(events){
-  if(!gMap||!locationsData) return 0;
-  gMarkers.forEach(m=>m.setMap(null));
-  gMarkers=[];
+function placeMarkers(locations){
+  if(!gMap) return;
+
+  // Build a stable signature — skip full rebuild if data hasn't changed
+  const sig = locations.map(l => `${l.name}:${l.count}:${(l.events[0]||{}).alertDate||''}`).join('|');
+  if(sig === lastMapSig) return;
+  lastMapSig = sig;
+
+  // Clear previous markers
+  gMarkers.forEach(m => m.setMap(null));
+  gMarkers = [];
   if(gClusterer) gClusterer.clearMarkers();
 
-  const byLoc={};
-  events.forEach(ev=>{
-    ev.locations.forEach(loc=>{ (byLoc[loc]=byLoc[loc]||[]).push(ev); });
-  });
-
-  Object.entries(locationsData).forEach(([name,coords])=>{
-    if(!coords||!byLoc[name]) return;
-    const [lat,lng]=coords;
-    const evs=byLoc[name];
-    const count=evs.length;
-    const scale=Math.min(8+count*2,18);
-    const marker=new google.maps.Marker({
-      position:{lat,lng},
-      icon:{path:google.maps.SymbolPath.CIRCLE,fillColor:'#d63031',fillOpacity:1,
-            strokeColor:'#ff7f7f',strokeWeight:2,scale},
-      label:{text:String(count),color:'#fff',fontSize:count>9?'10px':'11px',fontWeight:'700',fontFamily:'Assistant,Arial'},
+  locations.forEach(({ name, lat, lng, count, events }) => {
+    const scale  = Math.min(8 + count * 2, 18);
+    const marker = new google.maps.Marker({
+      position : { lat, lng },
+      icon     : { path: google.maps.SymbolPath.CIRCLE, fillColor: '#d63031', fillOpacity: 1,
+                   strokeColor: '#ff7f7f', strokeWeight: 2, scale },
+      label    : { text: String(count), color: '#fff',
+                   fontSize: count > 9 ? '10px' : '11px', fontWeight: '700', fontFamily: 'Assistant,Arial' },
     });
-    marker.addListener('click',()=>{
-      gInfoWindow.setContent(buildPopup(name,evs));
-      gInfoWindow.open(gMap,marker);
+    marker.addListener('click', () => {
+      gInfoWindow.setContent(buildPopup(name, events));
+      gInfoWindow.open(gMap, marker);
     });
     gMarkers.push(marker);
   });
@@ -1031,69 +1032,45 @@ function placeMarkers(events){
       gClusterer.addMarkers(gMarkers);
     } else {
       gClusterer = new markerClusterer.MarkerClusterer({
-        map:gMap, markers:gMarkers,
-        renderer:{
-          render({count,position}){
-            const s=count>10?22:count>3?17:13;
+        map: gMap, markers: gMarkers,
+        renderer: {
+          render({ count, position }){
+            const s = count > 10 ? 22 : count > 3 ? 17 : 13;
             return new google.maps.Marker({
               position,
-              icon:{path:google.maps.SymbolPath.CIRCLE,fillColor:'#8b0000',fillOpacity:.9,
-                    strokeColor:'#ff4757',strokeWeight:2,scale:s},
-              label:{text:String(count),color:'#fff',fontSize:count>10?'13px':'11px',fontWeight:'700',fontFamily:'Assistant,Arial'},
-              zIndex:Number(google.maps.Marker.MAX_ZINDEX)+count,
+              icon  : { path: google.maps.SymbolPath.CIRCLE, fillColor: '#8b0000', fillOpacity: .9,
+                        strokeColor: '#ff4757', strokeWeight: 2, scale: s },
+              label : { text: String(count), color: '#fff',
+                        fontSize: count > 10 ? '13px' : '11px', fontWeight: '700', fontFamily: 'Assistant,Arial' },
+              zIndex: Number(google.maps.Marker.MAX_ZINDEX) + count,
             });
           }
         }
       });
     }
   }
-  return gMarkers.length;
 }
 
 async function showMap(){
   initGMap();
+  if(mapLoading) return;
+  mapLoading = true;
   const loadEl  = document.getElementById('mapLoading');
   const loadTxt = document.getElementById('mapLoadingText');
-  if(locFetching) return;
-  locFetching = true;
   loadEl.style.display = 'flex';
+  loadTxt.textContent  = 'טוען נתוני מפה (24 שע\')...';
 
   try{
-    const evRes = await fetch('/api/events?limit=50000');
-    const allMapEvents = await evRes.json();
-
-    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
-    const EXCLUDED_CATS = ['סיום אירוע', 'האירוע הסתיים', 'בדקות הקרובות צפויות להתקבל התרעות באזורך'];
-
-    const mapEvents = allMapEvents.filter(e => {
-      const safeDateStr = e.alertDate.replace(' ', 'T');
-      const eventTime = new Date(safeDateStr).getTime();
-      return eventTime >= twentyFourHoursAgo && !EXCLUDED_CATS.includes(e.category_desc);
-    });
-
-    const uniqueCount = new Set(mapEvents.flatMap(e=>e.locations)).size;
-    const MAX_ROUNDS = 8;
-    let round=0;
-    while(round < MAX_ROUNDS){
-      round++;
-      loadTxt.textContent = round===1?`טוען ${uniqueCount} יישובים (24 שע')...`:`עדכון מיקומים (${round})...`;
-      const res  = await fetch('/api/locations');
-      const data = await res.json();
-      if(data.error) throw new Error(data.error);
-      const pending = data._pending||0;
-      delete data._pending;
-      locationsData = data;
-      const placed  = placeMarkers(mapEvents);
-      if(pending===0 || currentView!=='map'){ loadEl.style.display='none'; break; }
-      loadTxt.textContent=`נמצאו ${placed} יישובים — עוד ${pending} בתהליך...`;
-      await new Promise(r=>setTimeout(r,5000));
-    }
-    loadEl.style.display='none';
+    const res  = await fetch('/api/map-data?hours=24');
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
+    placeMarkers(data.locations);
+    loadEl.style.display = 'none';
   }catch(err){
-    loadTxt.textContent='שגיאה: '+err.message;
-    setTimeout(()=>{ loadEl.style.display='none'; },3000);
+    loadTxt.textContent = 'שגיאה: ' + err.message;
+    setTimeout(() => { loadEl.style.display = 'none'; }, 3000);
   }finally{
-    locFetching=false;
+    mapLoading = false;
   }
 }
 
@@ -1125,7 +1102,6 @@ async function loadEvents(manual=false){
     updateStats(allEvents);
     refreshDbBanner();
 
-    if(manual){ locationsData=null; }
     if(currentView!=='map') renderView();
 
   }catch(err){
@@ -1149,30 +1125,39 @@ async function loadEvents(manual=false){
 function startCountdown(){
   if(countdownTimer) clearInterval(countdownTimer);
   if(refreshTimer)   clearTimeout(refreshTimer);
-  countdownVal = 5;
-  // refresh indicator hidden from public view
-  countdownTimer = setInterval(()=>{
-    countdownVal--;
-    document.getElementById('countdown').textContent =
-      countdownVal>0 ? `רענון בעוד ${countdownVal} שניות` : 'מרענן...';
-    if(countdownVal<=0) clearInterval(countdownTimer);
-  },1000);
-  refreshTimer = setTimeout(()=>loadEvents(false), 5000);
+  // When SSE is active we only need a fallback poll every 30s.
+  // Without SSE, poll every 15s so we don't miss data.
+  const interval = sseConnected ? 30000 : 15000;
+  refreshTimer = setTimeout(() => loadEvents(false), interval);
 }
 
 function connectStream(){
   if(alertsStream) alertsStream.close();
   alertsStream = new EventSource('/api/stream');
+  alertsStream.onopen = () => { sseConnected = true; };
   alertsStream.onmessage = (event) => {
     try {
       const incoming = JSON.parse(event.data);
       if(!Array.isArray(incoming) || !incoming.length) return;
       const n = incoming.length;
       showToast(`🚨 ${n} אזעקה${n > 1 ? 'ות' : ''} חדשה`);
-      loadEvents(false);
+
+      if(currentView === 'map'){
+        // Debounce map refresh — avoid hammering on burst alerts
+        if(mapRefreshTimer) clearTimeout(mapRefreshTimer);
+        mapRefreshTimer = setTimeout(() => {
+          lastMapSig = ''; // force re-render with fresh server data
+          showMap();
+        }, 1500);
+      } else {
+        // Cancel any pending poll and reload list immediately
+        if(refreshTimer) clearTimeout(refreshTimer);
+        loadEvents(false);
+      }
     } catch(err) { console.error('SSE parse error:', err); }
   };
   alertsStream.onerror = () => {
+    sseConnected = false;
     if(alertsStream){ alertsStream.close(); alertsStream = null; }
     setTimeout(connectStream, 2000);
   };
