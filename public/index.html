@@ -637,7 +637,7 @@
       <button class="map-info-btn" id="mapInfoBtn" onclick="toggleMapInfo(event)" aria-label="מידע על המפה">i</button>
       <div class="map-info-tooltip" id="mapInfoTooltip">המפה מציגה התרעות מה-24 שעות האחרונות</div>
     </div>
-    <button class="btn refresh" id="refreshBtn" onclick="loadEvents(true)">↺ רענן</button>
+    <button class="btn refresh" id="refreshBtn" onclick="loadEvents(currentPage, true)">↺ רענן</button>
   </div>
   <div class="controls-bottom">
     <input type="text" class="search-box" id="searchInput" placeholder="🔍 חפש יישוב" oninput="onSearch()" />
@@ -683,15 +683,16 @@
 <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.umd.js"></script>
 <script>
 // ── State ─────────────────────────────────────────────────────────────────
-let allEvents   = [];
+let allEvents   = [];     // items on current page
 let currentView = 'list';
-let currentPage = 0;
+let currentPage = 1;      // 1-based, mirrors server response
+let totalPages  = 1;
+let totalCount  = 0;      // total event-groups matching current filter
+let totalAlerts = 0;      // total individual alerts matching current filter
 const PAGE_SIZE = 100;
 let refreshTimer   = null;
 let countdownTimer = null;
 let countdownVal   = 15;
-
-let fetchAsc         = false;
 let alertsStream     = null;
 let gMap             = null;
 let gClusterer       = null;
@@ -806,10 +807,8 @@ function setOperation(from, to, label) {
     btnAll.disabled = true;
   }
 
-  currentPage = 0;
-  fetchAsc    = false;
   lastMapSig  = '';
-  loadEvents(true);
+  loadEvents(1, true);
 }
 
 // ── Date range ────────────────────────────────────────────────────────────
@@ -817,7 +816,6 @@ function setRange(range) {
   document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
   if(range==='all') document.getElementById('opAll').classList.add('active');
   activeOperation = null;
-  fetchAsc = false;
   // restore range buttons in case we're coming from an operation tab
   document.getElementById('btn24h').style.display = '';
   document.getElementById('btnAll').disabled = false;
@@ -834,50 +832,34 @@ function setRange(range) {
     document.getElementById('fromDate').value = '';
     document.getElementById('toDate').value   = '';
   }
-  currentPage = 0;
-  loadEvents(true);
+  loadEvents(1, true);
 }
 
 function onDateChange(){
   document.getElementById('btn24h').classList.remove('active');
   document.getElementById('btnAll').classList.remove('active');
-  currentPage = 0;
-  fetchAsc    = false;
-  loadEvents(true);
+  loadEvents(1, true);
 }
 
 function getDateParams(){
   const from = document.getElementById('fromDate').value;
   const to   = document.getElementById('toDate').value;
+  const q    = document.getElementById('searchInput').value.trim();
   let p = '';
   if(from) p += `&from=${from}T00:00:00`;
   if(to)   p += `&to=${to}T23:59:59`;
-  if(fetchAsc) p += '&sort=asc';
+  if(q)    p += `&search=${encodeURIComponent(q)}`;
   return p;
 }
 
 // ── Search ────────────────────────────────────────────────────────────────
-function onSearch(){ currentPage = 0; renderView(); }
+function onSearch(){ loadEvents(1, false); }
 
-function filtered(){
-  const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  if(!q) return allEvents;
-  return allEvents
-    .filter(ev =>
-      ev.locations.some(l => l.toLowerCase().includes(q)) ||
-      (ev.category_desc||'').toLowerCase().includes(q)
-    )
-    .map(ev => {
-      const matchedLocs = ev.locations.filter(l => l.toLowerCase().includes(q));
-      if(!matchedLocs.length) return ev;
-      return {...ev, locations: matchedLocs, _totalCount: ev.count};
-    });
-}
+function filtered(){ return allEvents; } // search is handled server-side
 
 // ── View switching ────────────────────────────────────────────────────────
 function setView(v){
   currentView = v;
-  currentPage = 0;
   ['list','map'].forEach(n => {
     const btn = document.getElementById('btn' + n.charAt(0).toUpperCase() + n.slice(1));
     if (btn) btn.classList.toggle('active', n === v);
@@ -898,45 +880,41 @@ function setView(v){
 // ── Render ────────────────────────────────────────────────────────────────
 function renderView(){
   if(currentView==='map') return;
-  const data = filtered();
-  const c    = document.getElementById('mainContent');
-  if(!data.length){
-    c.innerHTML = allEvents.length
-      ? `<div class="status-msg"><span class="icon">🔍</span><div>לא נמצאו תוצאות</div></div>`
-      : `<div class="status-msg"><span class="icon">✅</span><div>אין אזעקות בטווח הזמן הנבחר</div></div>`;
+  const c = document.getElementById('mainContent');
+  if(!allEvents.length){
+    c.innerHTML = totalCount === 0
+      ? `<div class="status-msg"><span class="icon">✅</span><div>אין אזעקות בטווח הזמן הנבחר</div></div>`
+      : `<div class="status-msg"><span class="icon">🔍</span><div>לא נמצאו תוצאות</div></div>`;
     return;
   }
-  if(currentView==='list') renderList(c, data);
-  else                     renderGrid(c, data);
+  if(currentView==='list') renderList(c, allEvents);
+  else                     renderGrid(c, allEvents);
 }
 
-function pagerHtml(total){
-  if(total<=PAGE_SIZE) return '';
-  const pages = Math.ceil(total/PAGE_SIZE);
-  const from  = currentPage*PAGE_SIZE+1;
-  const to    = Math.min((currentPage+1)*PAGE_SIZE, total);
-  const btns  = Array.from({length:Math.min(pages,15)},(_,i)=>{
-    const idx = pages<=15 ? i : Math.floor(i*(pages-1)/14);
-    return `<button class="btn${idx===currentPage?' active':''}" onclick="goPage(${idx})">${idx+1}</button>`;
+function pagerHtml(){
+  if(totalPages <= 1) return '';
+  const from = ((currentPage - 1) * PAGE_SIZE + 1).toLocaleString();
+  const to   = Math.min(currentPage * PAGE_SIZE, totalCount).toLocaleString();
+  const total = totalCount.toLocaleString();
+
+  const btns = Array.from({length: Math.min(totalPages, 15)}, (_, i) => {
+    const pg = totalPages <= 15 ? i + 1 : Math.round(1 + i * (totalPages - 1) / 14);
+    return `<button class="btn${pg === currentPage ? ' active' : ''}" onclick="goPage(${pg})">${pg}</button>`;
   }).join('');
-  const jumpBtn = fetchAsc
-    ? `<button class="btn pager-edge" onclick="jumpToNewest()" title="חזור להתרעות האחרונות">»</button>`
-    : `<button class="btn pager-edge" onclick="jumpToOldest()" title="קפוץ להתרעות הראשונות">«</button>`;
-  return `<div class="pager">${btns}${jumpBtn}<span class="pager-info">${from}–${to} מתוך ${total}</span></div>`;
+
+  const toLast  = currentPage < totalPages
+    ? `<button class="btn pager-edge" onclick="goLastPage()" title="לעמוד האחרון – האזעקות הישנות ביותר">«</button>`
+    : '';
+  const toFirst = currentPage > 1
+    ? `<button class="btn pager-edge" onclick="goPage(1)" title="לעמוד הראשון – האזעקות האחרונות">»</button>`
+    : '';
+
+  return `<div class="pager">${btns}${toLast}${toFirst}<span class="pager-info">${from}–${to} מתוך ${total}</span></div>`;
 }
 
-function jumpToOldest(){
-  fetchAsc    = true;
-  currentPage = -1; // -1 = go to last page after load
-  loadEvents(true);
-}
-function jumpToNewest(){
-  fetchAsc    = false;
-  currentPage = 0;
-  loadEvents(true);
-}
+function goLastPage(){ window.scrollTo(0,0); loadEvents(totalPages, false); }
 
-function goPage(n){ currentPage=n; renderView(); window.scrollTo(0,0); }
+function goPage(n){ window.scrollTo(0,0); loadEvents(n, false); }
 
 function openEvent(alertDate) {
   window.open('/event.html?date=' + encodeURIComponent(alertDate), '_blank');
@@ -957,29 +935,25 @@ function eventRowHtml(ev, cls='event-row', idx=0){
       <div class="event-body">
         <div><span class="cat-badge">${esc(ev.category_desc||'–')}</span></div>
         <div class="event-locs">${esc(ev.locations.join(' · '))}</div>
-        ${ev._totalCount
-          ? `<div class="event-count">${ev.locations.length} מתוך ${ev._totalCount} יישובים &nbsp;🗺</div>`
-          : ev.count>1 ? `<div class="event-count">${ev.count} יישובים &nbsp;🗺</div>` : '<div class="event-count">🗺</div>'}
+        ${ev.count>1 ? `<div class="event-count">${ev.count} יישובים &nbsp;🗺</div>` : '<div class="event-count">🗺</div>'}
       </div>
     </div>`;
 }
 
 function renderList(c, data){
-  const page = data.slice(currentPage*PAGE_SIZE,(currentPage+1)*PAGE_SIZE);
   c.innerHTML =
-    `<div class="section-title">${data.reduce((s,e)=>s+e.count,0).toLocaleString()} התרעות</div>` +
-    pagerHtml(data.length) +
-    `<div class="events-list">${page.map((ev,i)=>eventRowHtml(ev,'event-row',i)).join('')}</div>` +
-    pagerHtml(data.length);
+    `<div class="section-title">${totalAlerts.toLocaleString()} התרעות</div>` +
+    pagerHtml() +
+    `<div class="events-list">${data.map((ev,i)=>eventRowHtml(ev,'event-row',i)).join('')}</div>` +
+    pagerHtml();
 }
 
 function renderGrid(c, data){
-  const page = data.slice(currentPage*PAGE_SIZE,(currentPage+1)*PAGE_SIZE);
   c.innerHTML =
-    `<div class="section-title">${data.reduce((s,e)=>s+e.count,0).toLocaleString()} התרעות</div>` +
-    pagerHtml(data.length) +
-    `<div class="events-grid">${page.map((ev,i)=>eventRowHtml(ev,'event-card',i)).join('')}</div>` +
-    pagerHtml(data.length);
+    `<div class="section-title">${totalAlerts.toLocaleString()} התרעות</div>` +
+    pagerHtml() +
+    `<div class="events-grid">${data.map((ev,i)=>eventRowHtml(ev,'event-card',i)).join('')}</div>` +
+    pagerHtml();
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────
@@ -995,8 +969,7 @@ function updateStats(events){
 
 // ── DB banner ─────────────────────────────────────────────────────────────
 async function refreshDbBanner(){
-  const total = allEvents.reduce((s,e)=>s+e.count,0);
-  if(!total) return;
+  if(!totalAlerts) return;
   const fromVal = document.getElementById('fromDate').value;
   const toVal   = document.getElementById('toDate').value;
   const newest  = toVal ? toVal : (allEvents[0] ? allEvents[0].alertDate : null);
@@ -1008,7 +981,7 @@ async function refreshDbBanner(){
       oldest = s.oldest;
     }catch(e){}
   }
-  document.getElementById('dbTotal').textContent  = total.toLocaleString();
+  document.getElementById('dbTotal').textContent  = totalAlerts.toLocaleString();
   document.getElementById('dbOldest').textContent = oldest ? fmtDate(oldest) : '–';
   document.getElementById('dbNewest').textContent = newest ? fmtDate(newest) : '–';
   document.getElementById('dbBanner').style.display = 'flex';
@@ -1041,19 +1014,19 @@ function initGMap(){
   gInfoWindow = new google.maps.InfoWindow();
 }
 
-function buildPopup(name, events, totalCount){
+function buildPopup(name, events, locCount){
   const lines = events.map(ev=>
     `<div style="margin:3px 0;font-size:.8rem;display:flex;align-items:baseline;gap:6px">
        <span style="color:var(--red-soft);direction:ltr;font-weight:700">${fmtTime(ev.alertDate)}</span>
        <span style="color:var(--text-muted);font-size:.71rem">${fmtDate(ev.alertDate)}</span>
        <span style="color:var(--text-muted);font-size:.71rem">${esc(ev.category_desc||'')}</span>
      </div>`).join('');
-  const hidden = totalCount - events.length;
+  const hidden = locCount - events.length;
   const more   = hidden > 0
     ? `<div style="color:var(--text-muted);font-size:.71rem;margin-top:4px">ועוד ${hidden}...</div>` : '';
   return `<div dir="rtl" style="font-family:var(--font);min-width:175px;padding:10px 12px">
     <div style="font-size:.98rem;font-weight:800;color:var(--text);margin-bottom:5px">📍 ${esc(name)}</div>
-    <div style="color:var(--red-bright);font-size:.8rem;margin-bottom:6px;font-weight:700">${totalCount} אזעקות</div>
+    <div style="color:var(--red-bright);font-size:.8rem;margin-bottom:6px;font-weight:700">${locCount} אזעקות</div>
     <hr style="border:none;border-top:1px solid var(--border);margin:5px 0">
     ${lines}${more}
   </div>`;
@@ -1136,7 +1109,7 @@ async function showMap(){
 }
 
 // ── Load events ───────────────────────────────────────────────────────────
-async function loadEvents(manual=false){
+async function loadEvents(page = 1, manual = false){
   const btn = document.getElementById('refreshBtn');
   const dot = document.getElementById('rdot');
   btn.disabled = true;
@@ -1148,20 +1121,16 @@ async function loadEvents(manual=false){
   }
 
   try{
-    const res = await fetch('/api/events?limit=2000'+getDateParams());
+    const res = await fetch(`/api/events?page=${page}&pageSize=${PAGE_SIZE}${getDateParams()}`);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(data.error) throw new Error(data.error);
 
-    allEvents = data;
-
-    if (fetchAsc) {
-      allEvents.reverse(); // flip to DESC visual order (oldest at bottom of last page)
-      if (currentPage === -1) {
-        // land on last page = absolute oldest events
-        currentPage = Math.max(0, Math.ceil(allEvents.length / PAGE_SIZE) - 1);
-      }
-    }
+    allEvents   = data.items;
+    currentPage = data.page;
+    totalPages  = data.totalPages;
+    totalCount  = data.total;
+    totalAlerts = data.totalAlerts;
 
     const now = new Date();
     document.getElementById('lastUpdated').innerHTML =
@@ -1198,7 +1167,7 @@ function startCountdown(){
   if(currentView === 'map') return;
   // When SSE is active use a light fallback; without SSE poll more often.
   const interval = sseConnected ? 30000 : 15000;
-  refreshTimer = setTimeout(() => loadEvents(false), interval);
+  refreshTimer = setTimeout(() => loadEvents(currentPage, false), interval);
 }
 
 function connectStream(){
@@ -1220,9 +1189,9 @@ function connectStream(){
           showMap();
         }, 1500);
       } else {
-        // Cancel any pending poll and reload list immediately
+        // Cancel any pending poll and reload page 1 (freshest alerts)
         if(refreshTimer) clearTimeout(refreshTimer);
-        loadEvents(false);
+        loadEvents(1, false);
       }
     } catch(err) { console.error('SSE parse error:', err); }
   };
@@ -1252,7 +1221,7 @@ function toggleMapInfo(e) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
-loadEvents(false);
+loadEvents(1, false);
 connectStream();
 </script>
 

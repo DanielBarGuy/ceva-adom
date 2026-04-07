@@ -214,28 +214,80 @@ const MAP_EXCLUDED_CATS = new Set([
 
 // ── Query helpers ─────────────────────────────────────────────────────────────
 
-async function queryEvents(fromIso, toIso, limit = 2000, sort = 'desc') {
+function rowToEvent(row) {
+  const locations = (row.locs || '').split('||').map(l => l.trim()).filter(Boolean);
+  return {
+    alertDate    : row.alert_date,
+    category     : row.category,
+    category_desc: row.category_desc || '',
+    locations,
+    count        : locations.length,
+  };
+}
+
+async function queryEvents(fromIso, toIso, limit = 2000) {
   const where = [], params = [];
   if (fromIso) { where.push('alert_date >= ?'); params.push(fromIso); }
   if (toIso)   { where.push('alert_date <= ?'); params.push(toIso); }
-  const order = sort === 'asc' ? 'ASC' : 'DESC';
   let sql = `SELECT alert_date, group_concat(data,'||') AS locs, category, category_desc
              FROM alerts`;
   if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ` GROUP BY alert_date ORDER BY alert_date ${order} LIMIT ?`;
+  sql += ' GROUP BY alert_date ORDER BY alert_date DESC LIMIT ?';
   params.push(limit);
-
   const rows = await dbAll(sql, params);
-  return rows.map(row => {
-    const locations = (row.locs || '').split('||').map(l => l.trim()).filter(Boolean);
-    return {
-      alertDate    : row.alert_date,
-      category     : row.category,
-      category_desc: row.category_desc || '',
-      locations,
-      count        : locations.length,
-    };
-  });
+  return rows.map(rowToEvent);
+}
+
+// ── Server-side paginated events ──────────────────────────────────────────────
+
+async function queryEventsPaged(page, pageSize, fromIso, toIso, search) {
+  const conds  = [];
+  const params = [];
+  if (fromIso) { conds.push('alert_date >= ?'); params.push(fromIso); }
+  if (toIso)   { conds.push('alert_date <= ?'); params.push(toIso); }
+
+  let total, totalAlerts, rows;
+
+  if (search) {
+    const sConds  = [...conds, 'data LIKE ?'];
+    const sParams = [...params, `%${search}%`];
+    const sWhere  = ' WHERE ' + sConds.join(' AND ');
+
+    ({ total }       = await dbGet(`SELECT COUNT(DISTINCT alert_date) AS total FROM alerts${sWhere}`, sParams));
+    ({ totalAlerts } = await dbGet(`SELECT COUNT(*) AS totalAlerts FROM alerts${sWhere}`, sParams));
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage   = Math.min(Math.max(1, page), totalPages);
+    const offset     = (safePage - 1) * pageSize;
+
+    rows = await dbAll(
+      `SELECT alert_date, group_concat(data,'||') AS locs, category, category_desc
+       FROM alerts
+       WHERE alert_date IN (SELECT DISTINCT alert_date FROM alerts${sWhere})
+       GROUP BY alert_date ORDER BY alert_date DESC LIMIT ? OFFSET ?`,
+      [...sParams, pageSize, offset]
+    );
+    return { items: rows.map(rowToEvent), total, totalAlerts, page: safePage, pageSize, totalPages };
+
+  } else {
+    const where = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
+
+    ({ total }       = await dbGet(
+      `SELECT COUNT(*) AS total FROM (SELECT 1 FROM alerts${where} GROUP BY alert_date)`, params));
+    ({ totalAlerts } = await dbGet(`SELECT COUNT(*) AS totalAlerts FROM alerts${where}`, params));
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage   = Math.min(Math.max(1, page), totalPages);
+    const offset     = (safePage - 1) * pageSize;
+
+    rows = await dbAll(
+      `SELECT alert_date, group_concat(data,'||') AS locs, category, category_desc
+       FROM alerts${where}
+       GROUP BY alert_date ORDER BY alert_date DESC LIMIT ? OFFSET ?`,
+      [...params, pageSize, offset]
+    );
+    return { items: rows.map(rowToEvent), total, totalAlerts, page: safePage, pageSize, totalPages };
+  }
 }
 
 // ── Static files ──────────────────────────────────────────────────────────────
@@ -275,7 +327,12 @@ function broadcastNewAlerts(alerts) {
 
 app.get('/api/events', async (req, res) => {
   try {
-    res.json(await queryEvents(req.query.from, req.query.to, parseInt(req.query.limit) || 2000, req.query.sort));
+    const page     = Math.max(1, parseInt(req.query.page)     || 1);
+    const pageSize = Math.min(Math.max(1, parseInt(req.query.pageSize) || 100), 500);
+    const from     = req.query.from   || null;
+    const to       = req.query.to     || null;
+    const search   = req.query.search ? req.query.search.trim() : null;
+    res.json(await queryEventsPaged(page, pageSize, from, to, search));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
