@@ -4,65 +4,114 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>אירוע אזעקה</title>
-
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
 
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:#0d0d0d;color:#f0f0f0;display:flex;flex-direction:column}
+    /* ── Layout ── */
+    html, body { height: 100%; display: flex; flex-direction: column; }
 
-    /* ── Header ── */
-    header{background:linear-gradient(135deg,#1a0000,#2d0000,#1a0000);border-bottom:2px solid #c0392b;padding:12px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 2px 20px rgba(192,57,43,.4);flex-shrink:0}
-    .back-btn{background:#1a0000;border:1px solid #c0392b;border-radius:8px;color:#ff8888;padding:6px 12px;cursor:pointer;font-size:.82rem;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:5px;transition:all .18s;white-space:nowrap}
-    .back-btn:hover{background:#c0392b;color:#fff}
-    .event-header{flex:1;min-width:0}
-    .event-title{font-size:1.3rem;font-weight:700;color:#ff4444;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    .event-title .time{direction:ltr;font-variant-numeric:tabular-nums}
-    .event-title .date{color:#aaa;font-size:.85rem;font-weight:400}
-    .cat-badge{display:inline-block;font-size:.72rem;background:rgba(192,57,43,.25);color:#ff9999;border:1px solid rgba(192,57,43,.4);border-radius:6px;padding:2px 9px}
-    .loc-count{font-size:.8rem;color:#888;margin-top:3px}
+    /* ── Event header ── */
+    .event-header { flex: 1; min-width: 0; }
+    .event-title {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--red-bright);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      letter-spacing: -.01em;
+    }
+    .event-title .time { direction: ltr; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+    .event-title .date { color: var(--text-sec); font-size: .86rem; font-weight: 500; }
+    .loc-count { font-size: .78rem; color: var(--text-muted); margin-top: 5px; font-weight: 500; }
 
     /* ── Map ── */
-    #map{flex:1;min-height:0}
+    #map { flex: 1; min-height: 0; }
 
     /* ── Loading overlay ── */
-    #overlay{position:absolute;inset:0;top:70px;background:rgba(13,13,13,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:1000;pointer-events:none}
-    .spinner{width:40px;height:40px;border:3px solid #333;border-top-color:#c0392b;border-radius:50%;animation:spin .8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    #overlayText{font-size:.95rem;color:#ddd;text-align:center}
-    #overlaySubtext{font-size:.78rem;color:#666}
+    #overlay {
+      position: absolute; inset: 0; top: 0;
+      background: rgba(11,11,18,.87);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px; z-index: 1000; pointer-events: none;
+    }
+    #overlayText    { font-size: .95rem; color: var(--text-sec); text-align: center; font-weight: 600; }
+    #overlaySubtext { font-size: .78rem; color: var(--text-muted); }
 
     /* ── Bottom panel ── */
-    #panel{flex-shrink:0;max-height:200px;overflow-y:auto;background:#111;border-top:1px solid #222;padding:10px 18px}
-    .panel-title{font-size:.72rem;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
-    .loc-chips{display:flex;flex-wrap:wrap;gap:6px}
-    .loc-chip{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;padding:4px 10px;font-size:.8rem;color:#ddd;cursor:pointer;transition:all .15s;white-space:nowrap}
-    .loc-chip:hover{border-color:#c0392b;color:#ff8888}
-    .loc-chip.no-coords{color:#555;border-style:dashed}
-
-    /* ── Google Maps InfoWindow dark theme ── */
-    .gm-style .gm-style-iw-c{background:#1e1e1e!important;padding:0!important;box-shadow:0 4px 20px rgba(0,0,0,.7)!important;border-radius:10px!important;border:1px solid #444!important}
-    .gm-style .gm-style-iw-d{overflow:hidden!important}
-    .gm-style .gm-style-iw-t::after{background:#1e1e1e!important}
-    .gm-style .gm-style-iw-tc::after{background:#1e1e1e!important}
-    .gm-style button.gm-ui-hover-effect{filter:invert(1)!important}
-
-    /* ── Legend ── */
-    .map-legend{position:absolute;bottom:210px;right:14px;z-index:900;background:rgba(20,20,20,.92);border:1px solid #333;border-radius:10px;padding:9px 13px;font-size:.75rem;color:#bbb;pointer-events:none}
-
-    @media(max-width:600px){
-      header{padding:9px 12px;gap:10px}
-      .event-title{font-size:1rem;gap:6px}
-      .event-title .date{font-size:.78rem}
-      .back-btn{padding:5px 10px;font-size:.78rem}
-      .loc-count{font-size:.75rem}
-      #panel{max-height:160px;padding:8px 12px}
-      .loc-chip{font-size:.75rem;padding:3px 8px}
-      .map-legend{bottom:170px;right:10px;font-size:.7rem;padding:7px 10px}
+    #panel {
+      flex-shrink: 0;
+      max-height: 200px;
+      overflow-y: auto;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      padding: 12px 20px;
+    }
+    .panel-title {
+      font-size: .7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    .loc-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .loc-chip {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 5px 12px;
+      font-size: .8rem;
+      color: var(--text-sec);
+      cursor: pointer;
+      transition: var(--trans);
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    .loc-chip:hover {
+      border-color: var(--red);
+      color: var(--red-soft);
+      background: var(--red-faint);
+    }
+    .loc-chip.no-coords {
+      color: var(--text-muted);
+      border-style: dashed;
+      cursor: default;
+    }
+    .loc-chip.no-coords:hover {
+      border-color: var(--border);
+      color: var(--text-muted);
+      background: var(--bg-elevated);
     }
 
-    @media(max-width:380px){
-      .event-title{flex-direction:column;align-items:flex-start;gap:3px}
-      .back-btn{font-size:.75rem}
+    /* ── Legend ── */
+    .map-legend {
+      position: absolute; bottom: 210px; right: 16px; z-index: 900;
+      background: rgba(17,17,24,.96);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: .75rem; color: var(--text-sec);
+      pointer-events: none;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      header { padding: 10px 14px; gap: 10px; }
+      .event-title { font-size: 1.05rem; gap: 7px; }
+      .event-title .date { font-size: .78rem; }
+      .back-btn { padding: 6px 11px; font-size: .78rem; }
+      .loc-count { font-size: .74rem; }
+      #panel { max-height: 160px; padding: 9px 14px; }
+      .loc-chip { font-size: .75rem; padding: 4px 9px; }
+      .map-legend { bottom: 170px; right: 10px; font-size: .7rem; padding: 7px 10px; }
+    }
+    @media (max-width: 380px) {
+      .event-title { flex-direction: column; align-items: flex-start; gap: 3px; }
+      .back-btn { font-size: .75rem; }
     }
   </style>
 </head>
@@ -71,7 +120,9 @@
 <header>
   <a class="back-btn" href="/" onclick="history.length>1?(history.back(),false):true">← חזרה</a>
   <div class="event-header" id="eventHeader">
-    <div class="event-title"><span class="spinner" style="width:22px;height:22px;border-width:2px"></span></div>
+    <div class="event-title">
+      <span class="spinner" style="width:22px;height:22px;border-width:2px"></span>
+    </div>
   </div>
 </header>
 
@@ -83,8 +134,8 @@
     <div id="overlaySubtext"></div>
   </div>
   <div class="map-legend" id="legend" style="display:none">
-    <div style="font-weight:600;margin-bottom:3px">🗺 אירוע זה</div>
-    <div id="legendText" style="color:#888;font-size:.72rem"></div>
+    <div style="font-weight:700;margin-bottom:3px;color:var(--text-sec)">🗺 אירוע זה</div>
+    <div id="legendText" style="color:var(--text-muted);font-size:.72rem"></div>
   </div>
 </div>
 
@@ -102,7 +153,7 @@ function fmtDate(iso){ return new Date(iso).toLocaleDateString('he-IL',{day:'2-d
 function fmtFull(iso){ return `${fmtDate(iso)} ${fmtTime(iso)}`; }
 
 // ── Parse URL ─────────────────────────────────────────────────────────────────
-const params   = new URLSearchParams(location.search);
+const params    = new URLSearchParams(location.search);
 const alertDate = params.get('date');
 
 if (!alertDate) {
@@ -133,13 +184,13 @@ const map = new google.maps.Map(document.getElementById('map'), {
   fullscreenControl: true,
 });
 const gInfoWindow = new google.maps.InfoWindow();
-const gMarkers = [];  // track placed markers for zoomTo
+const gMarkers = [];
 
 // ── Load event data ───────────────────────────────────────────────────────────
 async function loadEvent() {
   try {
-    const enc   = encodeURIComponent(alertDate);
-    const res   = await fetch(`/api/events?from=${enc}&to=${enc}&limit=1`);
+    const enc    = encodeURIComponent(alertDate);
+    const res    = await fetch(`/api/events?from=${enc}&to=${enc}&limit=1`);
     const events = await res.json();
 
     if (!events.length) throw new Error('האירוע לא נמצא במאגר');
@@ -147,7 +198,6 @@ async function loadEvent() {
     const ev = events[0];
     document.title = `אירוע ${fmtFull(ev.alertDate)}`;
 
-    // ── Header ──
     document.getElementById('eventHeader').innerHTML = `
       <div class="event-title">
         <span class="time">${fmtTime(ev.alertDate)}</span>
@@ -156,7 +206,6 @@ async function loadEvent() {
       </div>
       <div class="loc-count">${ev.count} יישוב${ev.count !== 1 ? 'ים' : ''} באירוע זה</div>`;
 
-    // ── Geocode & place markers ──
     await geocodeAndPlot(ev);
 
   } catch(err) {
@@ -166,8 +215,8 @@ async function loadEvent() {
 }
 
 // ── Geocode locations ─────────────────────────────────────────────────────────
-let allLocations  = [];
-let coordsMap     = {};   // name -> [lat,lng]
+let allLocations = [];
+let coordsMap    = {};
 
 async function geocodeAndPlot(ev) {
   allLocations = ev.locations;
@@ -184,7 +233,6 @@ async function geocodeAndPlot(ev) {
     const pending = data._pending || 0;
     delete data._pending;
 
-    // Merge into coordsMap
     Object.assign(coordsMap, data);
     plotMarkers(ev);
 
@@ -209,7 +257,6 @@ async function geocodeAndPlot(ev) {
 let markersPlaced = false;
 
 function plotMarkers(ev) {
-  // Remove old markers
   gMarkers.forEach(m => m.setMap(null));
   gMarkers.length = 0;
 
@@ -225,17 +272,17 @@ function plotMarkers(ev) {
       map,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
-        fillColor: '#c0392b', fillOpacity: 1,
-        strokeColor: '#ff6666', strokeWeight: 2,
+        fillColor: '#d63031', fillOpacity: 1,
+        strokeColor: '#ff7f7f', strokeWeight: 2,
         scale: 10,
       },
     });
     marker.addListener('click', () => {
       gInfoWindow.setContent(`
-        <div dir="rtl" style="font-family:'Segoe UI',Arial,sans-serif;padding:8px">
-          <div style="font-size:.95rem;font-weight:700;color:#f0f0f0;margin-bottom:4px">📍 ${esc(name)}</div>
-          <div style="color:#ff8888;font-size:.82rem">${fmtTime(ev.alertDate)}</div>
-          <div style="color:#888;font-size:.78rem">${esc(ev.category_desc||'')}</div>
+        <div dir="rtl" style="font-family:'Assistant','Segoe UI',Arial,sans-serif;padding:10px 12px">
+          <div style="font-size:.95rem;font-weight:800;color:#e8e8f0;margin-bottom:5px">📍 ${esc(name)}</div>
+          <div style="color:#ff7f7f;font-size:.83rem;font-weight:700">${fmtTime(ev.alertDate)}</div>
+          <div style="color:#4e4e72;font-size:.78rem;margin-top:2px">${esc(ev.category_desc||'')}</div>
         </div>`);
       gInfoWindow.open(map, marker);
     });
@@ -258,7 +305,6 @@ function plotMarkers(ev) {
     } catch(e) {}
   }
 
-  // Legend
   const missing = allLocations.length - placed;
   document.getElementById('legend').style.display = placed ? '' : 'none';
   document.getElementById('legendText').textContent =
@@ -273,7 +319,7 @@ function updatePanel(ev) {
     `${ev.count} יישובים באירוע — לחץ על יישוב לזום אליו`;
 
   const chips = allLocations.map(name => {
-    const coords = coordsMap[name];
+    const coords  = coordsMap[name];
     const noCoords = !coords;
     return `<span class="loc-chip${noCoords?' no-coords':''}"
                   onclick="${noCoords ? '' : `zoomTo([${coords}],'${esc(name)}')`}"

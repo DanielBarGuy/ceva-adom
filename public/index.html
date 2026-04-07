@@ -4,190 +4,526 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>צבע אדום – אירועים</title>
-
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
 
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;background:#0d0d0d;color:#f0f0f0;min-height:100vh;display:flex;flex-direction:column}
+    /* ── Page layout ── */
+    body { min-height: 100vh; display: flex; flex-direction: column; }
+    #mainContent {
+      padding: 18px 24px;
+      flex: 1;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+    }
 
     /* ── Header ── */
-    header{background:linear-gradient(135deg,#1a0000,#2d0000,#1a0000);border-bottom:2px solid #c0392b;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:200;box-shadow:0 2px 20px rgba(192,57,43,.4)}
-    .war-title{position:absolute;left:50%;transform:translateX(-50%);font-size:1.05rem;font-weight:700;color:#ff9999;letter-spacing:.04em;white-space:nowrap;text-shadow:0 0 12px rgba(192,57,43,.7);pointer-events:none}
-    .header-title{display:flex;align-items:center;gap:10px}
-    .siren-icon{font-size:1.8rem;animation:pulse 1.5s infinite}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-    h1{font-size:1.5rem;font-weight:700;color:#ff4444;text-shadow:0 0 20px rgba(255,68,68,.5)}
-    h1 span{color:#fff;font-size:.85rem;font-weight:400;display:block;margin-top:1px}
-    .header-meta{text-align:left;font-size:.78rem;color:#aaa;line-height:1.6}
+    .header-title { display: flex; align-items: center; gap: 12px; }
+    .siren-icon {
+      color: #ff4757;
+      animation: pulse 1.5s ease infinite;
+      filter: drop-shadow(0 0 8px rgba(255,71,87,.6));
+      flex-shrink: 0;
+    }
+    h1 {
+      font-size: 1.55rem;
+      font-weight: 800;
+      color: var(--red-bright);
+      letter-spacing: -.01em;
+      text-shadow: 0 0 28px var(--red-glow);
+    }
+    h1 span {
+      color: var(--text-sec);
+      font-size: .78rem;
+      font-weight: 500;
+      display: block;
+      margin-top: 1px;
+      letter-spacing: .02em;
+    }
+    .war-title {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 1rem;
+      font-weight: 700;
+      color: #ffaaaa;
+      letter-spacing: .04em;
+      white-space: nowrap;
+      text-shadow: 0 0 18px var(--red-glow);
+      pointer-events: none;
+    }
+    .header-meta {
+      text-align: left;
+      font-size: .76rem;
+      color: var(--text-muted);
+      line-height: 1.9;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 1px;
+    }
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: .7rem;
+      font-weight: 700;
+      color: #2ecc71;
+      letter-spacing: .04em;
+    }
+    .live-badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #2ecc71;
+      animation: pulseDot 1.2s ease infinite;
+    }
 
-    /* ── Stats ── */
-    .stats-bar{display:flex;gap:10px;padding:10px 22px;background:#111;border-bottom:1px solid #222;flex-wrap:wrap}
-    .stat-card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:7px 14px;text-align:center;flex:1;min-width:90px}
-    .stat-number{font-size:1.6rem;font-weight:700;color:#ff4444;line-height:1.1}
-    .stat-label{font-size:.7rem;color:#888;margin-top:2px}
+    /* ── DB banner ── */
+    .db-banner {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border-light);
+      padding: 6px 24px;
+      font-size: .72rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+    .db-banner span { color: var(--text-sec); font-weight: 600; }
 
-    /* ── Controls ── */
-    .controls{display:flex;flex-direction:column;gap:8px;padding:10px 22px;background:#111;border-bottom:1px solid #222}
-    .controls-top{display:flex;align-items:center;justify-content:center;gap:5px}
-    .controls-bottom{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .search-box{width:200px;background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:6px 12px;color:#f0f0f0;font-size:.86rem;font-family:inherit;direction:rtl}
-    .search-box:focus{outline:none;border-color:#c0392b}
-    .search-box::placeholder{color:#555}
-
-    /* Date range */
-    .date-range{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-    .date-input{background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:5px 10px;color:#ddd;font-size:.8rem;font-family:inherit;direction:ltr;width:130px}
-    .date-input:focus{outline:none;border-color:#c0392b}
-    .date-sep{color:#555;font-size:.8rem}
-
-    .btn{background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#bbb;padding:6px 12px;cursor:pointer;font-size:.82rem;font-family:inherit;transition:all .18s;white-space:nowrap}
-    .btn:hover{border-color:#c0392b;color:#ff4444}
-    .btn.active{background:#c0392b;border-color:#c0392b;color:#fff}
-    .btn.refresh{background:#1a0000;border-color:#c0392b;color:#ff6666}
-    .btn.refresh:hover{background:#c0392b;color:#fff}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
-
-    /* ── Main ── */
-    #mainContent{padding:16px 22px;flex:1;max-width:1200px;width:100%;margin:0 auto}
-
-    /* ── Map ── */
-    #mapWrap{flex:1;display:none;flex-direction:column;position:relative;min-height:0}
-    #alertsMap{flex:1;min-height:400px;height:calc(100vh - 210px)}
-    .map-loading{position:absolute;inset:0;background:rgba(13,13,13,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:1000;font-size:.95rem;color:#ddd}
-    .map-loading .spinner{width:36px;height:36px;border:3px solid #333;border-top-color:#c0392b;border-radius:50%;animation:spin .8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .map-loading small{color:#888;font-size:.75rem}
-    .map-legend{position:absolute;bottom:14px;right:14px;z-index:900;background:rgba(20,20,20,.92);border:1px solid #333;border-radius:10px;padding:9px 13px;font-size:.76rem;color:#bbb;pointer-events:none}
-    .map-legend-row{display:flex;align-items:center;gap:7px;margin-top:4px}
-    .legend-dot{width:13px;height:13px;border-radius:50%;background:#c0392b;border:2px solid #ff6666;flex-shrink:0}
-    .legend-dot.big{width:20px;height:20px}
-    .alert-map-marker{background:radial-gradient(circle at 40% 35%,#ff5555,#c0392b);border:2px solid rgba(255,120,120,.7);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:10px;box-shadow:0 0 10px rgba(192,57,43,.7),0 0 20px rgba(192,57,43,.3)}
-
-    /* ── Status ── */
-    .status-msg{text-align:center;padding:50px 20px;color:#666;font-size:1rem}
-    .status-msg .icon{font-size:2.6rem;display:block;margin-bottom:10px}
-    .status-msg.error{color:#ff6666}
-    .status-msg.loading .spinner{width:36px;height:36px;border:3px solid #333;border-top-color:#c0392b;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
-
-    /* ── Event list ── */
-    .events-list{display:flex;flex-direction:column;gap:7px}
-    .event-row{background:#1a1a1a;border:1px solid #2a2a2a;border-right:3px solid #c0392b;border-radius:10px;padding:10px 14px;display:flex;align-items:flex-start;gap:12px;transition:all .18s;cursor:pointer;text-decoration:none;color:inherit;display:flex}
-    .event-row:hover{border-right-color:#ff4444;background:#1f1f1f;transform:translateX(-2px);box-shadow:0 2px 16px rgba(192,57,43,.25)}
-    .event-row.recent{border-right-color:#ff2222;background:#1f0a0a}
-    .event-card{cursor:pointer}
-    .event-time-col{text-align:center;min-width:64px;flex-shrink:0}
-    .event-time{font-size:1.0rem;font-weight:600;color:#ff8888;direction:ltr}
-    .event-date{font-size:.68rem;color:#666;direction:ltr}
-    .event-ago{font-size:.65rem;color:#555;margin-top:2px}
-    .ev-divider{width:1px;background:#333;align-self:stretch;flex-shrink:0}
-    .event-body{flex:1;min-width:0}
-    .cat-badge{display:inline-block;font-size:.67rem;background:rgba(192,57,43,.2);color:#ff8888;border:1px solid rgba(192,57,43,.3);border-radius:5px;padding:1px 7px;margin-bottom:5px}
-    .event-locs{font-size:.88rem;color:#ddd;line-height:1.5;word-break:break-word}
-    .event-count{font-size:.72rem;color:#666;margin-top:3px}
-
-    /* ── Grid view ── */
-    .events-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:9px}
-    .event-card{background:#1a1a1a;border:1px solid #2a2a2a;border-top:3px solid #c0392b;border-radius:10px;padding:12px;transition:all .18s}
-    .event-card:hover{border-top-color:#ff4444;background:#1f1f1f;transform:translateY(-2px);box-shadow:0 4px 16px rgba(192,57,43,.2)}
-    .event-card.recent{border-top-color:#ff2222;background:#1f0a0a}
-    .event-card .event-time{font-size:.92rem}
-    .event-card .event-locs{margin-top:6px;font-size:.82rem}
-
-    /* ── Pagination ── */
-    .pager{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:10px 0}
-    .pager .btn{padding:4px 9px;font-size:.78rem;min-width:30px}
-    .pager-info{color:#555;font-size:.76rem;margin-right:4px}
-
-    /* ── Section title ── */
-    .section-title{font-size:.74rem;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-bottom:9px;display:flex;align-items:center;gap:7px}
-    .section-title::after{content:'';flex:1;height:1px;background:#222}
-
-    /* ── Refresh indicator ── */
-    .refresh-ind{position:fixed;bottom:14px;left:14px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:6px 11px;font-size:.74rem;color:#666;display:flex;align-items:center;gap:6px;z-index:300}
-    .rdot{width:7px;height:7px;border-radius:50%;background:#3c3}
-    .rdot.loading{background:#c0392b;animation:pulse .8s infinite}
-
-    /* ── DB info banner ── */
-    .db-banner{background:#111;border-bottom:1px solid #1e1e1e;padding:5px 22px;font-size:.74rem;color:#555;display:flex;gap:14px;align-items:center}
-    .db-banner span{color:#444}
-
-    /* ── Footer ── */
-    .site-footer{background:#0a0a0a;border-top:1px solid #1a1a1a;padding:10px 22px;text-align:center;font-size:.72rem;color:#333;letter-spacing:.04em}
-    .site-footer span{color:#444}
-
-    /* ── Google Maps InfoWindow dark theme ── */
-    .gm-style .gm-style-iw-c{background:#1e1e1e!important;padding:0!important;box-shadow:0 4px 20px rgba(0,0,0,.7)!important;border-radius:10px!important;border:1px solid #444!important}
-    .gm-style .gm-style-iw-d{overflow:hidden!important}
-    .gm-style .gm-style-iw-t::after{background:#1e1e1e!important}
-    .gm-style .gm-style-iw-tc::after{background:#1e1e1e!important}
-    .gm-style button.gm-ui-hover-effect{filter:invert(1)!important}
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: flex;
+      gap: 10px;
+      padding: 12px 24px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-light);
+      flex-wrap: wrap;
+    }
+    .stat-card {
+      background: rgba(255,255,255,.025);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: var(--radius);
+      padding: 11px 18px;
+      text-align: center;
+      flex: 1;
+      min-width: 90px;
+      transition: var(--trans);
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(214,48,49,.08), transparent 70%);
+      pointer-events: none;
+    }
+    .stat-card:hover {
+      border-color: rgba(214,48,49,.28);
+      background: rgba(214,48,49,.05);
+    }
+    .stat-number {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--red-bright);
+      line-height: 1.1;
+      letter-spacing: -.03em;
+    }
+    .stat-label {
+      font-size: .67rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
 
     /* ── Operations nav ── */
-.ops-nav{background:#0d0d0d;border-bottom:1px solid #1e1e1e;padding:0 22px;overflow-x:auto;display:flex;align-items:center;gap:6px;scrollbar-width:thin;scrollbar-color:#333 transparent;-webkit-overflow-scrolling:touch;white-space:nowrap}
-    .ops-nav::-webkit-scrollbar{height:4px}
-    .ops-nav::-webkit-scrollbar-track{background:transparent}
-    .ops-nav::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
-    .op-btn{flex-shrink:0;display:inline-flex;flex-direction:column;align-items:center;gap:1px;background:transparent;border:1px solid #222;border-radius:8px;color:#888;padding:6px 12px;cursor:pointer;font-family:inherit;transition:all .18s;text-align:center;margin:6px 0}
-    .op-btn:hover{border-color:#c0392b;color:#ff8888;background:#1a0a0a}
-    .op-btn.active{border-color:#c0392b;background:#1a0000;color:#ff4444}
-    .op-btn .op-name{font-size:.83rem;font-weight:600;line-height:1.2}
-    .op-btn .op-dates{font-size:.65rem;color:#555;direction:ltr;letter-spacing:.02em}
-    .op-btn.active .op-dates{color:#c0392b}
-    .op-iron-swords.active{border-color:#c0392b;background:#1a0000;color:#ff4444}
-    .op-iron-swords.active .op-dates{color:#c0392b}
-    .op-divider{width:1px;height:28px;background:#222;flex-shrink:0;margin:0 2px}
+    .ops-nav {
+      background: #1c1c2a;
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      overflow-x: auto;
+      display: flex;
+      align-items: stretch;
+      gap: 2px;
+      white-space: nowrap;
+    }
+    .op-btn {
+      flex-shrink: 0;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #7070a0;
+      padding: 11px 14px;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: var(--trans);
+      text-align: center;
+      position: relative;
+    }
+    .op-btn:hover {
+      color: var(--red-soft);
+      border-bottom-color: rgba(214,48,49,.45);
+      background: rgba(214,48,49,.06);
+    }
+    .op-btn.active {
+      color: var(--red-bright);
+      border-bottom-color: var(--red);
+      background: rgba(214,48,49,.07);
+    }
+    .op-btn .op-name  { font-size: .84rem; font-weight: 700; line-height: 1.2; }
+    .op-btn .op-dates { font-size: .63rem; color: #55557a; direction: ltr; letter-spacing: .02em; }
+    .op-btn.active .op-dates { color: rgba(214,48,49,.7); }
+    .op-divider { width: 1px; background: var(--border); flex-shrink: 0; margin: 8px 4px; }
 
-    @media(max-width:768px){
-      .war-title{display:none}
-      .date-input{width:120px}
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px 24px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-light);
+    }
+    .controls-top {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    /* Segmented control */
+    .view-toggle {
+      display: inline-flex;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .view-toggle .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 6px 16px;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text-muted);
+    }
+    .view-toggle .btn.active {
+      background: var(--red);
+      color: #fff;
+      box-shadow: 0 2px 10px var(--red-glow);
+    }
+    .view-toggle .btn:hover:not(.active) {
+      background: rgba(255,255,255,.06);
+      color: var(--text-sec);
+    }
+    .controls-bottom { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .search-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 7px 14px;
+      color: var(--text);
+      font-size: .86rem;
+      font-family: var(--font);
+      direction: rtl;
+      width: 200px;
+      transition: var(--trans);
+    }
+    .search-box:focus {
+      outline: none;
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px rgba(214,48,49,.12);
+    }
+    .search-box::placeholder { color: var(--text-muted); }
+    .date-range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .date-input {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      color: var(--text-sec);
+      font-size: .8rem;
+      font-family: var(--font);
+      direction: ltr;
+      width: 130px;
+      transition: var(--trans);
+    }
+    .date-input:focus {
+      outline: none;
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px rgba(214,48,49,.12);
+    }
+    .date-sep { color: var(--text-muted); font-size: .8rem; }
+
+    /* ── Map ── */
+    #mapWrap { flex: 1; display: none; flex-direction: column; position: relative; min-height: 0; }
+    #alertsMap { flex: 1; min-height: 400px; height: calc(100vh - 210px); }
+    .map-loading {
+      position: absolute; inset: 0;
+      background: rgba(11,11,18,.88);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px; z-index: 1000;
+      font-size: .95rem; color: var(--text-sec);
+    }
+    .map-loading small { color: var(--text-muted); font-size: .75rem; }
+    .map-legend {
+      position: absolute; bottom: 16px; right: 16px; z-index: 900;
+      background: rgba(17,17,24,.96);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: .75rem; color: var(--text-sec);
+      pointer-events: none;
+    }
+    .map-legend-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+    .legend-dot {
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      background: var(--red);
+      border: 2px solid var(--red-soft);
+      flex-shrink: 0;
+    }
+    .legend-dot.big { width: 20px; height: 20px; }
+
+    /* ── Status messages ── */
+    .status-msg {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+      font-size: 1rem;
+      font-weight: 500;
+    }
+    .status-msg .icon { font-size: 2.8rem; display: block; margin-bottom: 12px; }
+    .status-msg.error { color: var(--red-soft); }
+    .status-msg.loading .spinner { margin: 0 auto 14px; }
+
+    /* ── Section title ── */
+    .section-title {
+      font-size: .71rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border-light);
     }
 
-    @media(max-width:600px){
-      header,.stats-bar,.controls,.db-banner{padding:10px 13px}
-      .ops-nav{padding:0 10px}
-      h1{font-size:1.15rem}
-      h1 span{font-size:.75rem}
-      #mainContent{padding:10px 11px}
-      #alertsMap{height:calc(100vh - 270px)}
-
-      /* Header */
-      header{gap:6px}
-      .header-meta{font-size:.7rem;text-align:right}
-      .siren-icon{font-size:1.5rem}
-
-      /* Controls */
-      .controls-bottom{flex-direction:column;align-items:stretch;gap:7px}
-      .search-box{width:100%}
-      .date-range{flex-wrap:wrap;justify-content:flex-start;gap:5px}
-      .date-input{width:calc(50% - 16px);min-width:100px}
-
-      /* Stats */
-      .stat-card{min-width:70px;padding:6px 8px}
-      .stat-number{font-size:1.3rem}
-      .stat-label{font-size:.65rem}
-
-      /* Events */
-      .event-time-col{min-width:55px}
-      .event-time{font-size:.9rem}
-      .event-locs{font-size:.83rem}
-
-      /* Grid */
-      .events-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px}
-
-      /* Refresh indicator */
-      .refresh-ind{bottom:70px;left:10px;font-size:.7rem;padding:5px 9px}
-
-      /* Op buttons */
-      .op-btn{padding:5px 9px}
-      .op-btn .op-name{font-size:.78rem}
+    /* ── Events list ── */
+    .events-list { display: flex; flex-direction: column; gap: 6px; }
+    .event-row {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-right: 3px solid var(--red);
+      border-radius: var(--radius);
+      padding: 11px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+      transition: background var(--trans), border-color var(--trans), transform var(--trans), box-shadow var(--trans);
+      animation: fadeInUp .28s ease both;
     }
+    .event-row:hover {
+      border-right-color: var(--red-bright);
+      background: var(--bg-elevated);
+      transform: translateX(-3px);
+      box-shadow: 3px 0 0 var(--red-bright), var(--shadow-red);
+    }
+    .event-row.recent {
+      border-right-color: #ff2222;
+      background: rgba(214,48,49,.07);
+    }
+    .event-time-col { text-align: center; min-width: 64px; flex-shrink: 0; }
+    .event-time {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--red-soft);
+      direction: ltr;
+      letter-spacing: .02em;
+    }
+    .event-date  { font-size: .67rem; color: var(--text-muted); direction: ltr; margin-top: 2px; }
+    .event-ago   { font-size: .63rem; color: #3c3c5c; margin-top: 3px; }
+    .ev-divider  { width: 1px; background: var(--border); align-self: stretch; flex-shrink: 0; }
+    .event-body  { flex: 1; min-width: 0; }
+    .event-locs  { font-size: .88rem; color: var(--text); line-height: 1.55; word-break: break-word; margin-top: 5px; }
+    .event-count { font-size: .71rem; color: var(--text-muted); margin-top: 4px; }
 
-    @media(max-width:380px){
-      h1{font-size:1rem}
-      .stat-number{font-size:1.1rem}
-      .date-input{width:100%}
-      .controls-top{gap:3px}
-      .btn{padding:5px 9px;font-size:.78rem}
+    /* ── Grid view ── */
+    .events-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 10px;
+    }
+    .event-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-top: 3px solid var(--red);
+      border-radius: var(--radius);
+      padding: 14px;
+      cursor: pointer;
+      transition: background var(--trans), border-color var(--trans), transform var(--trans), box-shadow var(--trans);
+      animation: fadeInUp .28s ease both;
+    }
+    .event-card:hover {
+      border-top-color: var(--red-bright);
+      background: var(--bg-elevated);
+      transform: translateY(-3px);
+      box-shadow: 0 8px 28px rgba(0,0,0,.45), var(--shadow-red);
+    }
+    .event-card.recent {
+      border-top-color: #ff2222;
+      background: rgba(214,48,49,.07);
+    }
+    .event-card .event-time { font-size: .92rem; }
+    .event-card .event-locs { margin-top: 7px; font-size: .82rem; }
+
+    /* ── Pagination ── */
+    .pager { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 12px 0; }
+    .pager .btn { padding: 5px 10px; font-size: .78rem; min-width: 32px; }
+    .pager-info { color: var(--text-muted); font-size: .75rem; margin-right: 6px; }
+
+    /* ── Refresh indicator ── */
+    .refresh-ind {
+      position: fixed;
+      bottom: 18px;
+      left: 18px;
+      background: rgba(17,17,24,.92);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 7px 14px;
+      font-size: .74rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      z-index: 300;
+    }
+    .rdot { width: 7px; height: 7px; border-radius: 50%; background: #2ecc71; flex-shrink: 0; }
+    .rdot.loading { background: var(--red); animation: pulse .7s infinite; }
+
+    /* ── Footer ── */
+    .site-footer {
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-light);
+      padding: 13px 24px;
+      text-align: center;
+      font-size: .72rem;
+      color: var(--text-muted);
+      letter-spacing: .04em;
+    }
+    .site-footer span { color: var(--text-sec); font-weight: 700; }
+
+    /* ── Map info tooltip ── */
+    .map-info-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .map-info-btn {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid var(--text-muted);
+      color: var(--text-muted);
+      font-size: .68rem;
+      font-style: italic;
+      font-weight: 700;
+      font-family: Georgia, serif;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: var(--trans);
+      padding: 0;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .map-info-btn:hover, .map-info-btn.active {
+      border-color: var(--red-soft);
+      color: var(--red-soft);
+      background: rgba(214,48,49,.1);
+    }
+    .map-info-tooltip {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 50%;
+      transform: translateX(50%);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-size: .78rem;
+      color: var(--text-sec);
+      white-space: nowrap;
+      box-shadow: var(--shadow-lg);
+      z-index: 500;
+      pointer-events: none;
+    }
+    .map-info-tooltip::before {
+      content: '';
+      position: absolute;
+      top: -5px;
+      right: 50%;
+      transform: translateX(50%);
+      width: 8px; height: 8px;
+      background: var(--bg-elevated);
+      border-top: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      transform: translateX(50%) rotate(-45deg);
+    }
+    .map-info-tooltip.visible { display: block; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .war-title  { display: none; }
+      .date-input { width: 120px; }
+    }
+    @media (max-width: 600px) {
+      header, .stats-bar, .controls, .db-banner { padding: 10px 14px; }
+      .ops-nav      { padding: 0 12px; }
+      h1            { font-size: 1.2rem; }
+      h1 span       { font-size: .74rem; }
+      #mainContent  { padding: 12px 12px; }
+      #alertsMap    { height: calc(100vh - 270px); }
+      .controls-bottom { flex-direction: column; align-items: stretch; gap: 7px; }
+      .search-box   { width: 100%; }
+      .date-range   { flex-wrap: wrap; justify-content: flex-start; gap: 5px; }
+      .date-input   { width: calc(50% - 16px); min-width: 100px; }
+      .stat-card    { min-width: 72px; padding: 8px 10px; }
+      .stat-number  { font-size: 1.45rem; }
+      .stat-label   { font-size: .62rem; }
+      .event-time-col { min-width: 56px; }
+      .event-time   { font-size: .9rem; }
+      .event-locs   { font-size: .83rem; }
+      .events-grid  { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 7px; }
+      .refresh-ind  { bottom: 72px; left: 10px; font-size: .7rem; padding: 5px 10px; }
+      .op-btn       { padding: 9px 10px; }
+      .op-btn .op-name { font-size: .78rem; }
+    }
+    @media (max-width: 380px) {
+      h1            { font-size: 1rem; }
+      .stat-number  { font-size: 1.15rem; }
+      .date-input   { width: 100%; }
+      .btn          { padding: 6px 10px; font-size: .78rem; }
     }
   </style>
 </head>
@@ -195,11 +531,31 @@
 
 <header>
   <div class="header-title">
-    <span class="siren-icon">🚨</span>
+    <svg class="siren-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 44" fill="none" width="38" height="38" aria-hidden="true">
+      <!-- Left waves -->
+      <path d="M4.5 31 C-0.5 23 4.5 10 4.5 10" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+      <path d="M9.5 29 C6.5 23 9.5 13 9.5 13" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" opacity="0.52"/>
+      <!-- Right waves -->
+      <path d="M35.5 31 C40.5 23 35.5 10 35.5 10" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
+      <path d="M30.5 29 C33.5 23 30.5 13 30.5 13" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" opacity="0.52"/>
+      <!-- Body -->
+      <rect x="13" y="27" width="14" height="11" rx="2.5" fill="currentColor"/>
+      <!-- Dome -->
+      <path d="M12.5 27 C12.5 17.5 27.5 17.5 27.5 27Z" fill="currentColor" opacity="0.88"/>
+      <!-- Light cap -->
+      <ellipse cx="20" cy="19" rx="5.5" ry="3.8" fill="currentColor"/>
+      <!-- Center glow -->
+      <circle cx="20" cy="19" r="2.2" fill="white" opacity="0.48"/>
+      <!-- Base plate -->
+      <rect x="10" y="38" width="20" height="3.5" rx="1.75" fill="currentColor" opacity="0.65"/>
+    </svg>
     <h1>צבע אדום<span>מאגר אזעקות צבע אדום</span></h1>
   </div>
   <div class="war-title">מלחמת שאגת הארי</div>
-  <div class="header-meta" id="lastUpdated">טוען...</div>
+  <div class="header-meta" id="lastUpdated">
+    <span class="live-badge"><span class="live-badge-dot"></span>LIVE</span>
+    <span>טוען...</span>
+  </div>
 </header>
 
 <nav class="ops-nav" id="opsNav">
@@ -231,39 +587,55 @@
   </button>
 </nav>
 
-
 <div class="db-banner" id="dbBanner" style="display:none">
-  <span id="dbTotal">–</span> אזעקות במאגר &nbsp;|&nbsp;
+  <span id="dbTotal">–</span> אזעקות במאגר &nbsp;·&nbsp;
   <span id="dbOldest">–</span> עד <span id="dbNewest">–</span>
 </div>
 
 <div class="stats-bar" id="statsBar" style="display:none">
-  <div class="stat-card"><div class="stat-number" id="statLocations">–</div><div class="stat-label">התרעות ביישובים</div></div>
-  <div class="stat-card"><div class="stat-number" id="statLastHour">–</div><div class="stat-label">התרעות בשעה האחרונה</div></div>
-  <div class="stat-card"><div class="stat-number" id="statLatest">–</div><div class="stat-label">התרעה אחרונה</div></div>
+  <div class="stat-card">
+    <div class="stat-number" id="statLocations">–</div>
+    <div class="stat-label">יישובים עם התרעות</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number" id="statLastHour">–</div>
+    <div class="stat-label">התרעות בשעה האחרונה</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number" id="statLatest">–</div>
+    <div class="stat-label">התרעה אחרונה</div>
+  </div>
 </div>
 
 <div class="controls">
   <div class="controls-top">
-    <button class="btn active" id="btnList"  onclick="setView('list')">רשימה</button>
-    <button class="btn"        id="btnGrid"  onclick="setView('grid')">כרטיסים</button>
-    <button class="btn"        id="btnMap"   onclick="setView('map')">🗺 מפה</button>
-    <button class="btn refresh" id="refreshBtn" onclick="loadEvents(true)">רענן</button>
+    <div class="view-toggle">
+      <button class="btn active" id="btnList" onclick="setView('list')">רשימה</button>
+      <button class="btn"        id="btnMap"  onclick="setView('map')">🗺 מפה</button>
+    </div>
+    <div class="map-info-wrap">
+      <button class="map-info-btn" id="mapInfoBtn" onclick="toggleMapInfo(event)" aria-label="מידע על המפה">i</button>
+      <div class="map-info-tooltip" id="mapInfoTooltip">המפה מציגה התרעות מה-24 שעות האחרונות</div>
+    </div>
+    <button class="btn refresh" id="refreshBtn" onclick="loadEvents(true)">↺ רענן</button>
   </div>
   <div class="controls-bottom">
-    <input type="text" class="search-box" id="searchInput" placeholder="חפש יישוב" oninput="onSearch()" />
+    <input type="text" class="search-box" id="searchInput" placeholder="🔍 חפש יישוב" oninput="onSearch()" />
     <div class="date-range">
       <input type="date" class="date-input" id="fromDate" onchange="onDateChange()" />
       <span class="date-sep">–</span>
       <input type="date" class="date-input" id="toDate" onchange="onDateChange()" />
       <button class="btn active" onclick="setRange('all')" id="btnAll">הכל</button>
-      <button class="btn" onclick="setRange('24h')" id="btn24h">24 שע'</button>
+      <button class="btn"        onclick="setRange('24h')" id="btn24h">24 שע'</button>
     </div>
   </div>
 </div>
 
 <main id="mainContent">
-  <div class="status-msg loading"><div class="spinner"></div><div>טוען אירועים...</div></div>
+  <div class="status-msg loading">
+    <div class="spinner"></div>
+    <div>טוען אירועים...</div>
+  </div>
 </main>
 
 <div id="mapWrap">
@@ -274,16 +646,18 @@
     <small>הטעינה הראשונה עשויה לקחת מספר שניות</small>
   </div>
   <div class="map-legend">
-    <div style="font-weight:600;margin-bottom:3px">מקרא</div>
+    <div style="font-weight:700;margin-bottom:3px;color:var(--text-sec)">מקרא</div>
     <div class="map-legend-row"><div class="legend-dot"></div>יישוב עם אזעקה</div>
     <div class="map-legend-row"><div class="legend-dot big"></div>יישוב עם אזעקות מרובות</div>
   </div>
 </div>
 
-<div class="refresh-ind" style="display:none">
+<div class="refresh-ind" style="display:none !important">
   <div class="rdot" id="rdot"></div>
   <span id="countdown">רענון בעוד 15 שניות</span>
 </div>
+
+<div id="toastContainer"></div>
 
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBKVd483xZtL1Jd2ns5_oTBJYK88yT2WjQ"></script>
 <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.umd.js"></script>
@@ -312,14 +686,51 @@ function fmtTime(iso) { return new Date(iso).toLocaleTimeString('he-IL',{hour:'2
 function fmtDate(iso) { return new Date(iso).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
 function timeAgo(iso) {
   const s = Math.floor((Date.now()-new Date(iso))/1000);
-  if(s<60)   return `לפני ${s} שניות`;
-  if(s<3600) return `לפני ${Math.floor(s/60)} דקות`;
-  if(s<86400)return `לפני ${Math.floor(s/3600)} שעות`;
+  if(s<60)    return `לפני ${s} שניות`;
+  if(s<3600)  return `לפני ${Math.floor(s/60)} דקות`;
+  if(s<86400) return `לפני ${Math.floor(s/3600)} שעות`;
   return `לפני ${Math.floor(s/86400)} ימים`;
 }
 function isRecent(iso){ return Date.now()-new Date(iso)<3600000; }
-
 function toISODate(d){ return d ? new Date(d).toISOString().slice(0,10) : null; }
+
+// ── Count-up animation ────────────────────────────────────────────────────
+function countUp(el, target, duration=650) {
+  const prev = parseInt(el.dataset.prev || '0', 10);
+  if (prev === target) return;
+  el.dataset.prev = target;
+  const start = Date.now();
+  const tick  = () => {
+    const p = Math.min((Date.now()-start)/duration, 1);
+    const ease = 1 - Math.pow(1-p, 3);
+    el.textContent = Math.round(prev + (target-prev)*ease).toLocaleString();
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+// ── Toast notifications ───────────────────────────────────────────────────
+function showToast(msg, duration=4500) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `<div class="toast-dot"></div><span>${msg}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('out');
+    setTimeout(() => toast.remove(), 250);
+  }, duration);
+}
+
+// ── Skeleton loading ──────────────────────────────────────────────────────
+function showSkeleton(c) {
+  c.innerHTML = `
+    <div class="skeleton skel-row"></div>
+    <div class="skeleton skel-row"></div>
+    <div class="skeleton skel-row"></div>
+    <div class="skeleton skel-row"></div>
+    <div class="skeleton skel-row"></div>`;
+}
 
 // ── Operations ────────────────────────────────────────────────────────────
 let activeOperation = null;
@@ -331,7 +742,6 @@ function setOperation(from, to, label) {
     ? `צבע אדום – ${label}`
     : 'צבע אדום – אירועים';
 
-  // Update active state on op buttons
   document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
   const allBtn = document.getElementById('opAll');
 
@@ -342,7 +752,6 @@ function setOperation(from, to, label) {
     document.getElementById('btn24h').classList.remove('active');
     document.getElementById('btnAll').classList.add('active');
   } else {
-    // Find and activate the clicked button
     const btns = document.querySelectorAll('#opsNav .op-btn');
     btns.forEach(b => {
       if (b.querySelector('.op-name') &&
@@ -351,19 +760,18 @@ function setOperation(from, to, label) {
       }
     });
     document.getElementById('fromDate').value = from || '';
-    document.getElementById('toDate').value   = to || '';
+    document.getElementById('toDate').value   = to   || '';
     document.getElementById('btn24h').classList.remove('active');
     document.getElementById('btnAll').classList.remove('active');
   }
 
-  currentPage = 0;
+  currentPage   = 0;
   locationsData = null;
   loadEvents(true);
 }
 
 // ── Date range ────────────────────────────────────────────────────────────
 function setRange(range) {
-  // Deactivate any selected operation
   document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
   if(range==='all') document.getElementById('opAll').classList.add('active');
   activeOperation = null;
@@ -405,10 +813,8 @@ function onSearch(){ currentPage = 0; renderView(); }
 
 function filtered(){
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  let events = allEvents;
-
-  if(!q) return events;
-  return events
+  if(!q) return allEvents;
+  return allEvents
     .filter(ev =>
       ev.locations.some(l => l.toLowerCase().includes(q)) ||
       (ev.category_desc||'').toLowerCase().includes(q)
@@ -474,9 +880,10 @@ function openEvent(alertDate) {
   window.open('/event.html?date=' + encodeURIComponent(alertDate), '_blank');
 }
 
-function eventRowHtml(ev, cls='event-row'){
+function eventRowHtml(ev, cls='event-row', idx=0){
   return `
     <div class="${cls} ${isRecent(ev.alertDate)?'recent':''}"
+         style="animation-delay:${idx*22}ms"
          onclick="openEvent('${ev.alertDate}')"
          title="לחץ לצפייה במפה">
       <div class="event-time-col">
@@ -487,10 +894,10 @@ function eventRowHtml(ev, cls='event-row'){
       <div class="ev-divider"></div>
       <div class="event-body">
         <div><span class="cat-badge">${esc(ev.category_desc||'–')}</span></div>
-        <div class="event-locs">${esc(ev.locations.join(' • '))}</div>
+        <div class="event-locs">${esc(ev.locations.join(' · '))}</div>
         ${ev._totalCount
           ? `<div class="event-count">${ev.locations.length} מתוך ${ev._totalCount} יישובים &nbsp;🗺</div>`
-          : ev.count>1?`<div class="event-count">${ev.count} יישובים &nbsp;🗺</div>`:'<div class="event-count">🗺</div>'}
+          : ev.count>1 ? `<div class="event-count">${ev.count} יישובים &nbsp;🗺</div>` : '<div class="event-count">🗺</div>'}
       </div>
     </div>`;
 }
@@ -500,7 +907,7 @@ function renderList(c, data){
   c.innerHTML =
     `<div class="section-title">${data.reduce((s,e)=>s+e.count,0).toLocaleString()} התרעות</div>` +
     pagerHtml(data.length) +
-    `<div class="events-list">${page.map(ev=>eventRowHtml(ev,'event-row')).join('')}</div>` +
+    `<div class="events-list">${page.map((ev,i)=>eventRowHtml(ev,'event-row',i)).join('')}</div>` +
     pagerHtml(data.length);
 }
 
@@ -509,19 +916,19 @@ function renderGrid(c, data){
   c.innerHTML =
     `<div class="section-title">${data.reduce((s,e)=>s+e.count,0).toLocaleString()} התרעות</div>` +
     pagerHtml(data.length) +
-    `<div class="events-grid">${page.map(ev=>eventRowHtml(ev,'event-card')).join('')}</div>` +
+    `<div class="events-grid">${page.map((ev,i)=>eventRowHtml(ev,'event-card',i)).join('')}</div>` +
     pagerHtml(data.length);
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────
 function updateStats(events){
-  document.getElementById('statsBar').style.display = events.length?'flex':'none';
+  document.getElementById('statsBar').style.display = events.length ? 'flex' : 'none';
   if(!events.length) return;
   const uniqueLocs = new Set(events.flatMap(e=>e.locations)).size;
   const lastHour   = events.filter(e=>Date.now()-new Date(e.alertDate)<3600000).length;
-  document.getElementById('statLocations').textContent = uniqueLocs;
-  document.getElementById('statLastHour').textContent  = lastHour;
-  document.getElementById('statLatest').textContent    = events[0]?fmtTime(events[0].alertDate):'–';
+  countUp(document.getElementById('statLocations'), uniqueLocs);
+  countUp(document.getElementById('statLastHour'),  lastHour);
+  document.getElementById('statLatest').textContent = events[0] ? fmtTime(events[0].alertDate) : '–';
 }
 
 // ── DB banner ─────────────────────────────────────────────────────────────
@@ -574,16 +981,17 @@ function initGMap(){
 
 function buildPopup(name, events){
   const lines = events.slice(0,8).map(ev=>
-    `<div style="margin:2px 0;font-size:.8rem">
-       <span style="color:#ff8888;direction:ltr;display:inline-block">${fmtTime(ev.alertDate)}</span>
-       <span style="color:#888;font-size:.73rem;margin-right:4px">${fmtDate(ev.alertDate)}</span>
-       <span style="color:#666;font-size:.73rem">${esc(ev.category_desc||'')}</span>
+    `<div style="margin:3px 0;font-size:.8rem;display:flex;align-items:baseline;gap:6px">
+       <span style="color:var(--red-soft);direction:ltr;font-weight:700">${fmtTime(ev.alertDate)}</span>
+       <span style="color:var(--text-muted);font-size:.71rem">${fmtDate(ev.alertDate)}</span>
+       <span style="color:var(--text-muted);font-size:.71rem">${esc(ev.category_desc||'')}</span>
      </div>`).join('');
-  const more = events.length>8?`<div style="color:#666;font-size:.73rem;margin-top:3px">ועוד ${events.length-8}...</div>`:'';
-  return `<div dir="rtl" style="font-family:Arial,sans-serif;min-width:170px;padding:8px">
-    <div style="font-size:.98rem;font-weight:700;color:#f0f0f0;margin-bottom:4px">📍 ${esc(name)}</div>
-    <div style="color:#c0392b;font-size:.8rem;margin-bottom:5px;font-weight:600">${events.length} אזעקות</div>
-    <hr style="border:none;border-top:1px solid #444;margin:4px 0">
+  const more = events.length>8
+    ? `<div style="color:var(--text-muted);font-size:.71rem;margin-top:4px">ועוד ${events.length-8}...</div>` : '';
+  return `<div dir="rtl" style="font-family:var(--font);min-width:175px;padding:10px 12px">
+    <div style="font-size:.98rem;font-weight:800;color:var(--text);margin-bottom:5px">📍 ${esc(name)}</div>
+    <div style="color:var(--red-bright);font-size:.8rem;margin-bottom:6px;font-weight:700">${events.length} אזעקות</div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:5px 0">
     ${lines}${more}
   </div>`;
 }
@@ -607,9 +1015,9 @@ function placeMarkers(events){
     const scale=Math.min(8+count*2,18);
     const marker=new google.maps.Marker({
       position:{lat,lng},
-      icon:{path:google.maps.SymbolPath.CIRCLE,fillColor:'#c0392b',fillOpacity:1,
-            strokeColor:'#ff6666',strokeWeight:2,scale},
-      label:{text:String(count),color:'#fff',fontSize:count>9?'10px':'11px',fontWeight:'700',fontFamily:'Arial'},
+      icon:{path:google.maps.SymbolPath.CIRCLE,fillColor:'#d63031',fillOpacity:1,
+            strokeColor:'#ff7f7f',strokeWeight:2,scale},
+      label:{text:String(count),color:'#fff',fontSize:count>9?'10px':'11px',fontWeight:'700',fontFamily:'Assistant,Arial'},
     });
     marker.addListener('click',()=>{
       gInfoWindow.setContent(buildPopup(name,evs));
@@ -630,8 +1038,8 @@ function placeMarkers(events){
             return new google.maps.Marker({
               position,
               icon:{path:google.maps.SymbolPath.CIRCLE,fillColor:'#8b0000',fillOpacity:.9,
-                    strokeColor:'#ff4444',strokeWeight:2,scale:s},
-              label:{text:String(count),color:'#fff',fontSize:count>10?'13px':'11px',fontWeight:'700',fontFamily:'Arial'},
+                    strokeColor:'#ff4757',strokeWeight:2,scale:s},
+              label:{text:String(count),color:'#fff',fontSize:count>10?'13px':'11px',fontWeight:'700',fontFamily:'Assistant,Arial'},
               zIndex:Number(google.maps.Marker.MAX_ZINDEX)+count,
             });
           }
@@ -696,6 +1104,11 @@ async function loadEvents(manual=false){
   btn.disabled = true;
   dot.classList.add('loading');
 
+  if (manual) {
+    const c = document.getElementById('mainContent');
+    if (currentView !== 'map') showSkeleton(c);
+  }
+
   try{
     const res = await fetch('/api/events?limit=2000'+getDateParams());
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -706,25 +1119,26 @@ async function loadEvents(manual=false){
 
     const now = new Date();
     document.getElementById('lastUpdated').innerHTML =
-      `עודכן: ${now.toLocaleTimeString('he-IL')}<br>
-       <span style="color:#555;font-size:.72rem">${now.toLocaleDateString('he-IL')}</span>`;
+      `<span class="live-badge"><span class="live-badge-dot"></span>LIVE</span>
+       <span>עודכן: ${now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>`;
 
     updateStats(allEvents);
     refreshDbBanner();
 
-    // Invalidate map location cache when data refreshes
     if(manual){ locationsData=null; }
-
     if(currentView!=='map') renderView();
 
   }catch(err){
     if(currentView!=='map'){
       document.getElementById('mainContent').innerHTML=
-        `<div class="status-msg error"><span class="icon">⚠️</span>
-         <div>שגיאה בטעינת נתונים</div>
-         <div style="font-size:.82rem;margin-top:7px;color:#888">${esc(err.message)}</div></div>`;
+        `<div class="status-msg error">
+           <span class="icon">⚠️</span>
+           <div>שגיאה בטעינת נתונים</div>
+           <div style="font-size:.82rem;margin-top:8px;color:var(--text-muted)">${esc(err.message)}</div>
+         </div>`;
     }
-    document.getElementById('lastUpdated').textContent='שגיאה';
+    document.getElementById('lastUpdated').innerHTML =
+      `<span style="color:var(--red-soft)">שגיאה</span>`;
   }finally{
     btn.disabled=false;
     dot.classList.remove('loading');
@@ -736,10 +1150,11 @@ function startCountdown(){
   if(countdownTimer) clearInterval(countdownTimer);
   if(refreshTimer)   clearTimeout(refreshTimer);
   countdownVal = 5;
+  // refresh indicator hidden from public view
   countdownTimer = setInterval(()=>{
     countdownVal--;
     document.getElementById('countdown').textContent =
-      countdownVal>0?`רענון בעוד ${countdownVal} שניות`:'מרענן...';
+      countdownVal>0 ? `רענון בעוד ${countdownVal} שניות` : 'מרענן...';
     if(countdownVal<=0) clearInterval(countdownTimer);
   },1000);
   refreshTimer = setTimeout(()=>loadEvents(false), 5000);
@@ -752,6 +1167,8 @@ function connectStream(){
     try {
       const incoming = JSON.parse(event.data);
       if(!Array.isArray(incoming) || !incoming.length) return;
+      const n = incoming.length;
+      showToast(`🚨 ${n} אזעקה${n > 1 ? 'ות' : ''} חדשה`);
       loadEvents(false);
     } catch(err) { console.error('SSE parse error:', err); }
   };
@@ -761,10 +1178,29 @@ function connectStream(){
   };
 }
 
+// ── Map info tooltip ──────────────────────────────────────────────────────
+function toggleMapInfo(e) {
+  e.stopPropagation();
+  const btn     = document.getElementById('mapInfoBtn');
+  const tooltip = document.getElementById('mapInfoTooltip');
+  const isOpen  = tooltip.classList.contains('visible');
+  tooltip.classList.toggle('visible', !isOpen);
+  btn.classList.toggle('active', !isOpen);
+  if (!isOpen) {
+    const close = () => {
+      tooltip.classList.remove('visible');
+      btn.classList.remove('active');
+      document.removeEventListener('click', close);
+    };
+    document.addEventListener('click', close);
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 loadEvents(false);
 connectStream();
 </script>
+
 <footer class="site-footer">
   Built &amp; designed by <span>DanielBG</span> &nbsp;·&nbsp; כל הזכויות שמורות
 </footer>

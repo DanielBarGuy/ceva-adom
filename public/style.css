@@ -1,0 +1,229 @@
+/* ═══════════════════════════════════════════════════════════════
+   Tzeva Adom – Design System
+   Font: Assistant (Google Fonts – Hebrew-optimised)
+═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap');
+
+/* ── Variables ─────────────────────────────────────────────── */
+:root {
+  --bg:           #0b0b12;
+  --bg-surface:   #111118;
+  --bg-elevated:  #1a1a26;
+  --bg-card:      #14141e;
+  --border:       #26263a;
+  --border-light: #1c1c28;
+  --red:          #d63031;
+  --red-bright:   #ff4757;
+  --red-soft:     #ff7f7f;
+  --red-faint:    rgba(214,48,49,.12);
+  --red-glow:     rgba(214,48,49,.28);
+  --text:         #e8e8f0;
+  --text-sec:     #9898b8;
+  --text-muted:   #4e4e72;
+  --radius:       12px;
+  --radius-sm:    8px;
+  --trans:        .18s ease;
+  --font:         'Assistant', 'Segoe UI', Arial, sans-serif;
+  --shadow-lg:    0 8px 32px rgba(0,0,0,.55);
+  --shadow-red:   0 4px 20px rgba(214,48,49,.18);
+}
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Custom scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar          { width: 5px; height: 5px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: #2a2a3e; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3c3c58; }
+* { scrollbar-width: thin; scrollbar-color: #2a2a3e transparent; }
+
+/* ── Keyframes ─────────────────────────────────────────────── */
+@keyframes pulse     { 0%,100%{opacity:1} 50%{opacity:.32} }
+@keyframes spin      { to{transform:rotate(360deg)} }
+@keyframes fadeInUp  { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes shimmer   { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+@keyframes toastIn   { from{opacity:0;transform:translateY(14px) scale(.95)} to{opacity:1;transform:translateY(0) scale(1)} }
+@keyframes toastOut  { to{opacity:0;transform:translateY(8px) scale(.96)} }
+@keyframes pulseDot  { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:.6} }
+
+/* ── Spinner ───────────────────────────────────────────────── */
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── Skeleton loading ──────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    var(--border)      50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease infinite;
+  border-radius: var(--radius);
+}
+.skel-row                      { height: 72px; margin-bottom: 7px; }
+.skel-row:nth-child(2)         { opacity: .75; animation-delay: .08s; }
+.skel-row:nth-child(3)         { opacity: .55; animation-delay: .16s; }
+.skel-row:nth-child(4)         { opacity: .35; animation-delay: .24s; }
+.skel-row:nth-child(5)         { opacity: .18; animation-delay: .32s; }
+
+/* ── Header ────────────────────────────────────────────────── */
+header {
+  background: linear-gradient(135deg, #0e0006 0%, #1a0008 40%, #130014 70%, #1a0008 100%);
+  border-bottom: 1px solid rgba(214,48,49,.45);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  box-shadow: 0 2px 28px rgba(214,48,49,.16), 0 1px 0 rgba(255,255,255,.04) inset;
+}
+
+/* ── Back button (event.html) ──────────────────────────────── */
+.back-btn {
+  background: rgba(214,48,49,.1);
+  border: 1px solid rgba(214,48,49,.32);
+  border-radius: var(--radius-sm);
+  color: var(--red-soft);
+  padding: 7px 14px;
+  cursor: pointer;
+  font-size: .83rem;
+  font-family: var(--font);
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--trans);
+  white-space: nowrap;
+}
+.back-btn:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+  box-shadow: 0 0 16px var(--red-glow);
+}
+
+/* ── Category badge ────────────────────────────────────────── */
+.cat-badge {
+  display: inline-block;
+  font-size: .67rem;
+  font-weight: 700;
+  background: var(--red-faint);
+  color: var(--red-soft);
+  border: 1px solid rgba(214,48,49,.28);
+  border-radius: 5px;
+  padding: 2px 8px;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+/* ── Buttons ───────────────────────────────────────────────── */
+.btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-sec);
+  padding: 7px 14px;
+  cursor: pointer;
+  font-size: .83rem;
+  font-family: var(--font);
+  font-weight: 600;
+  transition: var(--trans);
+  white-space: nowrap;
+  line-height: 1;
+}
+.btn:hover {
+  border-color: var(--red);
+  color: var(--red-bright);
+  background: rgba(214,48,49,.07);
+}
+.btn.active {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+  box-shadow: 0 2px 12px var(--red-glow);
+}
+.btn:disabled { opacity: .38; cursor: not-allowed; }
+.btn.refresh {
+  background: rgba(214,48,49,.08);
+  border-color: rgba(214,48,49,.38);
+  color: var(--red-soft);
+}
+.btn.refresh:hover {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+  box-shadow: 0 2px 12px var(--red-glow);
+}
+
+/* ── Google Maps InfoWindow dark theme ────────────────────── */
+.gm-style .gm-style-iw-c {
+  background: #181824 !important;
+  padding: 0 !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,.75) !important;
+  border-radius: var(--radius) !important;
+  border: 1px solid var(--border) !important;
+}
+.gm-style .gm-style-iw-d            { overflow: hidden !important; }
+.gm-style .gm-style-iw-t::after     { background: #181824 !important; }
+.gm-style .gm-style-iw-tc::after    { background: #181824 !important; }
+.gm-style button.gm-ui-hover-effect  { filter: invert(1) !important; }
+
+/* ── Toast notifications ───────────────────────────────────── */
+#toastContainer {
+  position: fixed;
+  bottom: 22px;
+  left: 22px;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--bg-elevated);
+  border: 1px solid rgba(214,48,49,.4);
+  border-radius: var(--radius);
+  padding: 11px 16px;
+  font-size: .83rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  animation: toastIn .28s ease both;
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,.04) inset;
+  pointer-events: auto;
+  max-width: 290px;
+  direction: rtl;
+}
+.toast.out          { animation: toastOut .22s ease forwards; }
+.toast-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red-bright);
+  flex-shrink: 0;
+  animation: pulseDot .9s ease infinite;
+}
