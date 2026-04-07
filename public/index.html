@@ -409,6 +409,28 @@
     .pager { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 12px 0; }
     .pager .btn { padding: 5px 10px; font-size: .78rem; min-width: 32px; }
     .pager-info { color: var(--text-muted); font-size: .75rem; margin-right: 6px; }
+    .pager-edge {
+      font-size: .9rem;
+      padding: 5px 11px;
+      border-color: rgba(214,48,49,.35);
+      color: var(--red-soft);
+      background: rgba(214,48,49,.07);
+    }
+    .pager-edge:hover {
+      background: var(--red);
+      border-color: var(--red);
+      color: #fff;
+    }
+    .order-badge {
+      font-size: .68rem;
+      font-weight: 700;
+      color: var(--red-soft);
+      background: rgba(214,48,49,.12);
+      border: 1px solid rgba(214,48,49,.28);
+      border-radius: 5px;
+      padding: 1px 7px;
+      letter-spacing: .02em;
+    }
 
     /* ── Refresh indicator ── */
     .refresh-ind {
@@ -679,6 +701,7 @@ let refreshTimer   = null;
 let countdownTimer = null;
 let countdownVal   = 15;
 
+let fetchAsc         = false;
 let alertsStream     = null;
 let gMap             = null;
 let gClusterer       = null;
@@ -787,7 +810,8 @@ function setOperation(from, to, label) {
   }
 
   currentPage = 0;
-  lastMapSig  = ''; // force map rebuild if user switches back to map
+  fetchAsc    = false;
+  lastMapSig  = '';
   loadEvents(true);
 }
 
@@ -796,6 +820,7 @@ function setRange(range) {
   document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
   if(range==='all') document.getElementById('opAll').classList.add('active');
   activeOperation = null;
+  fetchAsc = false;
 
   document.getElementById('btn24h').classList.toggle('active', range==='24h');
   document.getElementById('btnAll').classList.toggle('active', range==='all');
@@ -817,6 +842,7 @@ function onDateChange(){
   document.getElementById('btn24h').classList.remove('active');
   document.getElementById('btnAll').classList.remove('active');
   currentPage = 0;
+  fetchAsc    = false;
   loadEvents(true);
 }
 
@@ -826,6 +852,7 @@ function getDateParams(){
   let p = '';
   if(from) p += `&from=${from}T00:00:00`;
   if(to)   p += `&to=${to}T23:59:59`;
+  if(fetchAsc) p += '&sort=asc';
   return p;
 }
 
@@ -892,7 +919,21 @@ function pagerHtml(total){
     const idx = pages<=15 ? i : Math.floor(i*(pages-1)/14);
     return `<button class="btn${idx===currentPage?' active':''}" onclick="goPage(${idx})">${idx+1}</button>`;
   }).join('');
-  return `<div class="pager">${btns}<span class="pager-info">${from}–${to} מתוך ${total}</span></div>`;
+  const jumpBtn = fetchAsc
+    ? `<button class="btn pager-edge" onclick="jumpToNewest()" title="חזור להתרעות האחרונות">»</button>`
+    : `<button class="btn pager-edge" onclick="jumpToOldest()" title="קפוץ להתרעות הראשונות">«</button>`;
+  return `<div class="pager">${btns}${jumpBtn}<span class="pager-info">${from}–${to} מתוך ${total}</span></div>`;
+}
+
+function jumpToOldest(){
+  fetchAsc    = true;
+  currentPage = 0;
+  loadEvents(true);
+}
+function jumpToNewest(){
+  fetchAsc    = false;
+  currentPage = 0;
+  loadEvents(true);
 }
 
 function goPage(n){ currentPage=n; renderView(); window.scrollTo(0,0); }
@@ -924,9 +965,12 @@ function eventRowHtml(ev, cls='event-row', idx=0){
 }
 
 function renderList(c, data){
-  const page = data.slice(currentPage*PAGE_SIZE,(currentPage+1)*PAGE_SIZE);
+  const page      = data.slice(currentPage*PAGE_SIZE,(currentPage+1)*PAGE_SIZE);
+  const orderTag  = fetchAsc
+    ? `<span class="order-badge">מהישן לחדש ↑</span>`
+    : '';
   c.innerHTML =
-    `<div class="section-title">${data.reduce((s,e)=>s+e.count,0).toLocaleString()} התרעות</div>` +
+    `<div class="section-title">${data.reduce((s,e)=>s+e.count,0).toLocaleString()} התרעות ${orderTag}</div>` +
     pagerHtml(data.length) +
     `<div class="events-list">${page.map((ev,i)=>eventRowHtml(ev,'event-row',i)).join('')}</div>` +
     pagerHtml(data.length);

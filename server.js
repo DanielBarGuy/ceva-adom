@@ -214,14 +214,15 @@ const MAP_EXCLUDED_CATS = new Set([
 
 // ── Query helpers ─────────────────────────────────────────────────────────────
 
-async function queryEvents(fromIso, toIso, limit = 2000) {
+async function queryEvents(fromIso, toIso, limit = 2000, sort = 'desc') {
   const where = [], params = [];
   if (fromIso) { where.push('alert_date >= ?'); params.push(fromIso); }
   if (toIso)   { where.push('alert_date <= ?'); params.push(toIso); }
+  const order = sort === 'asc' ? 'ASC' : 'DESC';
   let sql = `SELECT alert_date, group_concat(data,'||') AS locs, category, category_desc
              FROM alerts`;
   if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ' GROUP BY alert_date ORDER BY alert_date DESC LIMIT ?';
+  sql += ` GROUP BY alert_date ORDER BY alert_date ${order} LIMIT ?`;
   params.push(limit);
 
   const rows = await dbAll(sql, params);
@@ -274,7 +275,7 @@ function broadcastNewAlerts(alerts) {
 
 app.get('/api/events', async (req, res) => {
   try {
-    res.json(await queryEvents(req.query.from, req.query.to, parseInt(req.query.limit) || 2000));
+    res.json(await queryEvents(req.query.from, req.query.to, parseInt(req.query.limit) || 2000, req.query.sort));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
