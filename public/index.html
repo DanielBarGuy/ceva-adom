@@ -778,10 +778,13 @@ function setOperation(from, to, label) {
   document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
   const allBtn = document.getElementById('opAll');
 
-  const fromEl = document.getElementById('fromDate');
-  const toEl   = document.getElementById('toDate');
+  const fromEl   = document.getElementById('fromDate');
+  const toEl     = document.getElementById('toDate');
+  const btn24h   = document.getElementById('btn24h');
+  const btnAll   = document.getElementById('btnAll');
 
   if (!from && !to) {
+    // ── כל ההתרעות — הכל חופשי ──
     allBtn.classList.add('active');
     fromEl.value    = '';
     toEl.value      = '';
@@ -789,9 +792,12 @@ function setOperation(from, to, label) {
     toEl.disabled   = false;
     fromEl.classList.remove('locked');
     toEl.classList.remove('locked');
-    document.getElementById('btn24h').classList.remove('active');
-    document.getElementById('btnAll').classList.add('active');
+    btn24h.style.display = '';
+    btnAll.disabled      = false;
+    btnAll.classList.remove('active');
+    btnAll.classList.add('active');
   } else {
+    // ── מבצע ספציפי — תאריכים ו-"הכל" נעולים, 24 שע' מוסתר ──
     const btns = document.querySelectorAll('#opsNav .op-btn');
     btns.forEach(b => {
       if (b.querySelector('.op-name') &&
@@ -805,8 +811,9 @@ function setOperation(from, to, label) {
     toEl.disabled   = true;
     fromEl.classList.add('locked');
     toEl.classList.add('locked');
-    document.getElementById('btn24h').classList.remove('active');
-    document.getElementById('btnAll').classList.remove('active');
+    btn24h.style.display = 'none';
+    btnAll.classList.add('active');
+    btnAll.disabled = true;
   }
 
   currentPage = 0;
@@ -821,6 +828,9 @@ function setRange(range) {
   if(range==='all') document.getElementById('opAll').classList.add('active');
   activeOperation = null;
   fetchAsc = false;
+  // restore range buttons in case we're coming from an operation tab
+  document.getElementById('btn24h').style.display = '';
+  document.getElementById('btnAll').disabled = false;
 
   document.getElementById('btn24h').classList.toggle('active', range==='24h');
   document.getElementById('btnAll').classList.toggle('active', range==='all');
