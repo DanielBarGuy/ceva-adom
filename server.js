@@ -203,9 +203,8 @@ function startLiveLoop() {
 
 // ── Map-data cache ────────────────────────────────────────────────────────────
 
-let mapDataCache     = null;
-let mapDataCacheTime = 0;
-const MAP_CACHE_TTL  = 60 * 1000; // 60 seconds
+const mapDataCacheByHours = {}; // { [hours]: { data, time } }
+const MAP_CACHE_TTL = 60 * 1000; // 60 seconds
 
 const MAP_EXCLUDED_CATS = new Set([
   'סיום אירוע',
@@ -266,7 +265,7 @@ app.get('/api/stream', (req, res) => {
 
 function broadcastNewAlerts(alerts) {
   if (!alerts.length) return;
-  mapDataCache = null; // invalidate map cache so next open gets fresh data
+  Object.keys(mapDataCacheByHours).forEach(k => delete mapDataCacheByHours[k]); // invalidate all map caches
   const payload = `data: ${JSON.stringify(alerts)}\n\n`;
   for (const client of clients) client.write(payload);
 }
@@ -303,9 +302,10 @@ app.get('/api/map-data', async (req, res) => {
   try {
     const hours = Math.min(parseInt(req.query.hours) || 24, 168);
 
-    // Serve from cache if fresh
-    if (mapDataCache && (Date.now() - mapDataCacheTime) < MAP_CACHE_TTL) {
-      return res.json(mapDataCache);
+    // Serve from per-hours cache if fresh
+    const cached = mapDataCacheByHours[hours];
+    if (cached && (Date.now() - cached.time) < MAP_CACHE_TTL) {
+      return res.json(cached.data);
     }
 
     const since = new Date(Date.now() - hours * 3600 * 1000)
@@ -347,8 +347,7 @@ app.get('/api/map-data', async (req, res) => {
       }));
 
     const result = { generatedAt: new Date().toISOString(), hours, locations };
-    mapDataCache     = result;
-    mapDataCacheTime = Date.now();
+    mapDataCacheByHours[hours] = { data: result, time: Date.now() };
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

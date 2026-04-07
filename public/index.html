@@ -981,18 +981,19 @@ function initGMap(){
   gInfoWindow = new google.maps.InfoWindow();
 }
 
-function buildPopup(name, events){
-  const lines = events.slice(0,8).map(ev=>
+function buildPopup(name, events, totalCount){
+  const lines = events.map(ev=>
     `<div style="margin:3px 0;font-size:.8rem;display:flex;align-items:baseline;gap:6px">
        <span style="color:var(--red-soft);direction:ltr;font-weight:700">${fmtTime(ev.alertDate)}</span>
        <span style="color:var(--text-muted);font-size:.71rem">${fmtDate(ev.alertDate)}</span>
        <span style="color:var(--text-muted);font-size:.71rem">${esc(ev.category_desc||'')}</span>
      </div>`).join('');
-  const more = events.length>8
-    ? `<div style="color:var(--text-muted);font-size:.71rem;margin-top:4px">ועוד ${events.length-8}...</div>` : '';
+  const hidden = totalCount - events.length;
+  const more   = hidden > 0
+    ? `<div style="color:var(--text-muted);font-size:.71rem;margin-top:4px">ועוד ${hidden}...</div>` : '';
   return `<div dir="rtl" style="font-family:var(--font);min-width:175px;padding:10px 12px">
     <div style="font-size:.98rem;font-weight:800;color:var(--text);margin-bottom:5px">📍 ${esc(name)}</div>
-    <div style="color:var(--red-bright);font-size:.8rem;margin-bottom:6px;font-weight:700">${events.length} אזעקות</div>
+    <div style="color:var(--red-bright);font-size:.8rem;margin-bottom:6px;font-weight:700">${totalCount} אזעקות</div>
     <hr style="border:none;border-top:1px solid var(--border);margin:5px 0">
     ${lines}${more}
   </div>`;
@@ -1021,7 +1022,7 @@ function placeMarkers(locations){
                    fontSize: count > 9 ? '10px' : '11px', fontWeight: '700', fontFamily: 'Assistant,Arial' },
     });
     marker.addListener('click', () => {
-      gInfoWindow.setContent(buildPopup(name, events));
+      gInfoWindow.setContent(buildPopup(name, events, count));
       gInfoWindow.open(gMap, marker);
     });
     gMarkers.push(marker);
@@ -1125,8 +1126,9 @@ async function loadEvents(manual=false){
 function startCountdown(){
   if(countdownTimer) clearInterval(countdownTimer);
   if(refreshTimer)   clearTimeout(refreshTimer);
-  // When SSE is active we only need a fallback poll every 30s.
-  // Without SSE, poll every 15s so we don't miss data.
+  // No list polling while the map is open — SSE handles live updates there.
+  if(currentView === 'map') return;
+  // When SSE is active use a light fallback; without SSE poll more often.
   const interval = sseConnected ? 30000 : 15000;
   refreshTimer = setTimeout(() => loadEvents(false), interval);
 }
