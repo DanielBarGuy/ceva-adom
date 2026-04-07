@@ -11,6 +11,7 @@ const DB_FILE  = path.join(BASE_DIR, 'alerts.db');
 const CACHE_FILE = path.join(BASE_DIR, 'geocache.json');
 
 const OREF_URL = 'https://alerts-history.oref.org.il/Shared/Ajax/GetAlarmsHistory.aspx?lang=he&mode=1';
+const LIVE_URL = 'https://www.oref.org.il/WarningMessages/Alert/alerts.json';
 const OREF_HEADERS = {
   'Referer'         : 'https://www.oref.org.il/',
   'X-Requested-With': 'XMLHttpRequest',
@@ -99,7 +100,9 @@ async function geocodeBatch(names, maxNew = 100) {
 async function fetchAndStore() {
   const resp = await fetch(OREF_URL, { headers: OREF_HEADERS });
   const text = await resp.text();
-  const data = text.trim() ? JSON.parse(text) : [];
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.startsWith('<')) return [];
+  const data = JSON.parse(trimmed);
   if (!Array.isArray(data)) return [];
 
   return new Promise((resolve, reject) => {
@@ -140,6 +143,59 @@ function startFetchLoop() {
         broadcastNewAlerts(inserted);
       }
     } catch (e) { console.error('[fetch] error:', e.message); }
+    setTimeout(loop, 60000);
+  };
+  loop();
+}
+
+// ── Live feed (real-time) ─────────────────────────────────────────────────────
+
+async function fetchLiveAndStore() {
+  const resp = await fetch(LIVE_URL, { headers: OREF_HEADERS });
+  const text = await resp.text();
+  const trimmed = text.trim();
+  if (!trimmed || trimmed === '{}' || trimmed.startsWith('<')) return [];
+  const data = JSON.parse(text);
+  if (!Array.isArray(data) || !data.length) return [];
+
+  return new Promise((resolve, reject) => {
+    const inserted = [];
+    db.serialize(() => {
+      const stmt = db.prepare(
+        'INSERT OR IGNORE INTO alerts (rid,data,alert_date,category,category_desc,matrix_id) VALUES (?,?,?,?,?,?)'
+      );
+      for (const r of data) {
+        stmt.run(
+          r.rid, r.data || '', r.alertDate || '',
+          r.category, r.category_desc || '', r.matrix_id,
+          function(err) {
+            if (!err && this.changes > 0) {
+              inserted.push({
+                rid          : r.rid,
+                alertDate    : r.alertDate || '',
+                locations    : r.data ? [r.data] : [],
+                category     : r.category,
+                category_desc: r.category_desc || '',
+                count        : r.data ? 1 : 0,
+              });
+            }
+          }
+        );
+      }
+      stmt.finalize(err => err ? reject(err) : resolve(inserted));
+    });
+  });
+}
+
+function startLiveLoop() {
+  const loop = async () => {
+    try {
+      const inserted = await fetchLiveAndStore();
+      if (inserted.length) {
+        console.log(`[live] +${inserted.length} new alerts`);
+        broadcastNewAlerts(inserted);
+      }
+    } catch (e) { console.error('[live] error:', e.message); }
     setTimeout(loop, 5000);
   };
   loop();
@@ -246,5 +302,6 @@ fetchAndStore()
   .then(items => console.log(`[init] fetched ${items.length} new alerts`))
   .catch(e => console.error('[init] fetch failed:', e.message));
 startFetchLoop();
+startLiveLoop();
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -327,6 +327,10 @@ let activeOperation = null;
 function setOperation(from, to, label) {
   activeOperation = label || null;
 
+  document.title = label && label !== 'all'
+    ? `צבע אדום – ${label}`
+    : 'צבע אדום – אירועים';
+
   // Update active state on op buttons
   document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
   const allBtn = document.getElementById('opAll');
