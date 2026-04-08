@@ -189,13 +189,20 @@ const gMarkers = [];
 // ── Load event data ───────────────────────────────────────────────────────────
 async function loadEvent() {
   try {
-    const normalizedDate = alertDate.replace('T', ' ');
-    const enc = encodeURIComponent(normalizedDate);
+    const encSpace = encodeURIComponent(alertDate.replace('T', ' '));
+    const encT     = encodeURIComponent(alertDate.replace(' ', 'T'));
 
-    const res  = await fetch(`/api/events?from=${enc}&to=${enc}&pageSize=1`);
-    const data = await res.json();
+    // Attempt 1: space format (standard SQLite storage)
+    let res = await fetch(`/api/events?from=${encSpace}&to=${encSpace}&pageSize=1`);
+    let data = await res.json();
+    let eventsArray = Array.isArray(data) ? data : data.items;
 
-    const eventsArray = Array.isArray(data) ? data : data.items;
+    // Attempt 2: fallback to T format
+    if (!eventsArray || eventsArray.length === 0) {
+      res = await fetch(`/api/events?from=${encT}&to=${encT}&pageSize=1`);
+      data = await res.json();
+      eventsArray = Array.isArray(data) ? data : data.items;
+    }
 
     if (!eventsArray || eventsArray.length === 0) throw new Error('האירוע לא נמצא במאגר');
 
