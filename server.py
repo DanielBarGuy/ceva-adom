@@ -6,7 +6,7 @@
 Run: python server.py
 """
 
-import json, os, sys, time, sqlite3, threading
+import json, os, sys, time, sqlite3, threading, queue
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -39,6 +39,20 @@ OREF_HEADERS = {
 
 ISRAEL_TZ = timezone(timedelta(hours=3))
 
+MAP_EXCLUDED_CATS = {
+    'סיום אירוע',
+    'האירוע הסתיים',
+    'בדקות הקרובות צפויות להתקבל התרעות באזורך',
+}
+
+MAP_CACHE_TTL = 60  # seconds
+
+_sse_clients      = set()
+_sse_clients_lock = threading.Lock()
+
+_map_data_cache      = {}
+_map_data_cache_lock = threading.Lock()
+
 # ── SQLite ────────────────────────────────────────────────────────────────────
 
 _db_lock = threading.Lock()
@@ -60,25 +74,62 @@ def init_db():
 
 
 def insert_alerts(rows: list):
-    """Insert a batch of alert dicts; silently skips duplicates."""
+    """Insert alerts and return only the newly inserted rows."""
     if not rows:
-        return 0
+        return []
+
+    inserted = []
+
     with _db_lock:
         with sqlite3.connect(DB_FILE) as c:
-            added = 0
             for r in rows:
                 try:
-                    c.execute(
+                    cur = c.execute(
                         'INSERT OR IGNORE INTO alerts'
                         ' (rid, data, alert_date, category, category_desc, matrix_id)'
                         ' VALUES (?,?,?,?,?,?)',
-                        (r.get('rid'), r.get('data',''), r.get('alertDate',''),
-                         r.get('category'), r.get('category_desc',''), r.get('matrix_id'))
+                        (
+                            r.get('rid'),
+                            r.get('data', ''),
+                            r.get('alertDate', ''),
+                            r.get('category'),
+                            r.get('category_desc', ''),
+                            r.get('matrix_id'),
+                        )
                     )
-                    added += c.rowcount
+                    if cur.rowcount > 0:
+                        inserted.append({
+                            'rid'          : r.get('rid'),
+                            'alertDate'    : r.get('alertDate', ''),
+                            'locations'    : [r.get('data', '')] if r.get('data') else [],
+                            'category'     : r.get('category'),
+                            'category_desc': r.get('category_desc', ''),
+                            'count'        : 1 if r.get('data') else 0,
+                        })
                 except Exception:
                     pass
-    return added
+
+    return inserted
+
+
+def broadcast_sse(alerts):
+    if not alerts:
+        return
+
+    dead = []
+    with _sse_clients_lock:
+        clients = list(_sse_clients)
+
+    for q in clients:
+        try:
+            q.put_nowait(alerts)
+        except Exception:
+            dead.append(q)
+
+    if dead:
+        with _sse_clients_lock:
+            for q in dead:
+                _sse_clients.discard(q)
 
 
 def query_events(from_iso: str = None, to_iso: str = None, limit: int = 1000, grouped: bool = True):
@@ -184,11 +235,23 @@ def fetch_and_store():
     req = Request(OREF_URL, headers=OREF_HEADERS)
     with urlopen(req, timeout=12) as resp:
         raw = resp.read().decode('utf-8-sig')
-    data = json.loads(raw) if raw.strip() else []
+
+    raw = raw.strip()
+    if not raw or raw.startswith('<'):
+        return []
+
+    data = json.loads(raw)
     if not isinstance(data, list):
-        return 0
-    added = insert_alerts(data)
-    return added
+        return []
+
+    inserted = insert_alerts(data)
+
+    if inserted:
+        with _map_data_cache_lock:
+            _map_data_cache.clear()
+        broadcast_sse(inserted)
+
+    return inserted
 
 
 # ── Live real-time alert ───────────────────────────────────────────────────────
@@ -217,7 +280,7 @@ def _bg_fetch_loop():
         try:
             added = fetch_and_store()
             if added:
-                print(f'[fetch] +{added} new alerts stored', flush=True)
+                print(f'[fetch] +{len(added)} new alerts stored', flush=True)
         except Exception as e:
             print(f'[fetch] error: {e}', flush=True)
         time.sleep(15)
@@ -310,6 +373,82 @@ def geocode_batch(names: list, max_new: int = 100):
         return {n: _geocache[n] for n in names if _geocache.get(n) is not None}
 
 
+# ── Map data ──────────────────────────────────────────────────────────────────
+
+def get_map_data(hours: int):
+    hours = max(1, min(int(hours or 24), 168))
+    now_ts = time.time()
+
+    with _map_data_cache_lock:
+        cached = _map_data_cache.get(hours)
+        if cached and (now_ts - cached['time']) < MAP_CACHE_TTL:
+            return cached['data']
+
+    since = (datetime.utcnow() - timedelta(hours=hours)).strftime('%Y-%m-%d %H:%M:%S')
+
+    with _db_lock:
+        with sqlite3.connect(DB_FILE) as c:
+            rows = c.execute(
+                '''
+                SELECT data, alert_date, category_desc
+                FROM alerts
+                WHERE alert_date >= ?
+                  AND category_desc NOT IN (?, ?, ?)
+                ORDER BY alert_date DESC
+                ''',
+                (since, *tuple(MAP_EXCLUDED_CATS))
+            ).fetchall()
+
+    by_loc = {}
+    for data, alert_date, category_desc in rows:
+        name = (data or '').strip()
+        if not name:
+            continue
+
+        rec = by_loc.setdefault(name, {
+            'name'  : name,
+            'count' : 0,
+            'events': []
+        })
+        rec['count'] += 1
+
+        if len(rec['events']) < 8:
+            rec['events'].append({
+                'alertDate'    : alert_date,
+                'category_desc': category_desc or '',
+            })
+
+    names = list(by_loc.keys())
+    coords = geocode_batch(names, max_new=50)
+
+    locations = []
+    for name in names:
+        coord = coords.get(name)
+        if not coord:
+            continue
+        locations.append({
+            'name'  : name,
+            'lat'   : coord[0],
+            'lng'   : coord[1],
+            'count' : by_loc[name]['count'],
+            'events': by_loc[name]['events'],
+        })
+
+    result = {
+        'generatedAt': datetime.utcnow().isoformat() + 'Z',
+        'hours'      : hours,
+        'locations'  : locations,
+    }
+
+    with _map_data_cache_lock:
+        _map_data_cache[hours] = {
+            'time': now_ts,
+            'data': result,
+        }
+
+    return result
+
+
 # ── HTTP handler ──────────────────────────────────────────────────────────────
 
 class Handler(SimpleHTTPRequestHandler):
@@ -322,19 +461,23 @@ class Handler(SimpleHTTPRequestHandler):
         params = parse_qs(parsed.query)
 
         if path == '/api/events':
-            self._handle_events(params)
+            return self._handle_events(params)
         elif path == '/api/locations':
-            self._handle_locations(params)
+            return self._handle_locations(params)
         elif path == '/api/geocode':
-            self._handle_geocode(params)
+            return self._handle_geocode(params)
         elif path == '/api/stats':
-            self._handle_stats()
+            return self._handle_stats()
         elif path == '/api/geocache':
-            self._handle_geocache_all()
+            return self._handle_geocache_all()
         elif path == '/api/live':
-            self._handle_live()
+            return self._handle_live()
+        elif path == '/api/map-data':
+            return self._handle_map_data(params)
+        elif path == '/api/stream':
+            return self._handle_stream()
         else:
-            super().do_GET()
+            return super().do_GET()
 
     # ── /api/events ────────────────────────────────────────────────────────────
     def _resolve_from(self, params):
@@ -396,11 +539,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── /api/geocode ───────────────────────────────────────────────────────────
     def _handle_geocode(self, params):
-        """
-        GET /api/geocode?names=loc1,loc2,loc3
-        Returns { name: [lat,lng]|null, ..., _pending: N }
-        Geocodes up to 100 uncached names per call; poll until _pending==0.
-        """
         try:
             raw   = params.get('names', [''])[0]
             names = [n.strip() for n in raw.split(',') if n.strip()]
@@ -436,6 +574,49 @@ class Handler(SimpleHTTPRequestHandler):
             alert = _live_alert
         self._send_json(200, alert if alert is not None else {})
 
+    # ── /api/map-data ──────────────────────────────────────────────────────────
+    def _handle_map_data(self, params):
+        try:
+            hours = int(params.get('hours', ['24'])[0])
+            result = get_map_data(hours)
+            self._send_json(200, result)
+        except Exception as e:
+            self._send_json(500, {'error': str(e)})
+
+    # ── /api/stream (SSE) ──────────────────────────────────────────────────────
+    def _handle_stream(self):
+        q = queue.Queue()
+
+        with _sse_clients_lock:
+            _sse_clients.add(q)
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Connection', 'keep-alive')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        try:
+            self.wfile.write(b'retry: 2000\n\n')
+            self.wfile.flush()
+
+            while True:
+                try:
+                    alerts = q.get(timeout=20)
+                    payload = json.dumps(alerts, ensure_ascii=False)
+                    self.wfile.write(f'data: {payload}\n\n'.encode('utf-8'))
+                except queue.Empty:
+                    self.wfile.write(b': keepalive\n\n')
+
+                self.wfile.flush()
+
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            with _sse_clients_lock:
+                _sse_clients.discard(q)
+
     def _send_json(self, status, payload):
         body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
         self.send_response(status)
@@ -463,7 +644,7 @@ if __name__ == '__main__':
     try:
         added = fetch_and_store()
         total, oldest, newest = db_stats()
-        print(f'[init] fetched {added} new alerts | DB: {total} total | {oldest} to {newest}',
+        print(f'[init] fetched {len(added)} new alerts | DB: {total} total | {oldest} to {newest}',
               flush=True)
     except Exception as e:
         print(f'[init] initial fetch failed: {e}', flush=True)

@@ -572,7 +572,7 @@
     </svg>
     <h1>צבע אדום<span>מאגר אזעקות צבע אדום</span></h1>
   </div>
-  <div class="war-title">מלחמת שאגת הארי</div>
+  <div class="war-title">מבצע חושך נצחי</div>
   <div class="header-meta" id="lastUpdated">
     <span class="live-badge"><span class="live-badge-dot"></span>LIVE</span>
     <span>טוען...</span>
@@ -609,6 +609,14 @@
   <button class="op-btn" onclick="setOperation('2025-06-13','2025-06-24','עם כלביא')">
     <span class="op-name">עם כלביא</span>
     <span class="op-dates">13.06–24.06.2025</span>
+  </button>
+  <button class="op-btn" onclick="setOperation('2026-02-28','2026-04-08','שאגת הארי')">
+    <span class="op-name">שאגת הארי</span>
+    <span class="op-dates">28.02–08.04.2026</span>
+  </button>
+  <button class="op-btn" onclick="setOperation('2026-04-08',null,'חושך נצחי')">
+    <span class="op-name">חושך נצחי</span>
+    <span class="op-dates">08.04.2026 – היום</span>
   </button>
   <div class="op-divider"></div>
   <button class="op-btn op-iron-swords" onclick="setOperation('2023-10-07',null,'חרבות ברזל')">
@@ -1098,6 +1106,7 @@ function placeMarkers(locations){
 async function showMap(){
   initGMap();
   if(mapLoading) return;
+
   mapLoading = true;
   const loadEl  = document.getElementById('mapLoading');
   const loadTxt = document.getElementById('mapLoadingText');
@@ -1105,14 +1114,37 @@ async function showMap(){
   loadTxt.textContent  = 'טוען נתוני מפה (24 שע\')...';
 
   try{
-    const res  = await fetch('/api/map-data?hours=24');
-    const data = await res.json();
+    const res  = await fetch('/api/map-data?hours=24', { cache: 'no-store' });
+    const text = await res.text();
+
+    if(!res.ok){
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 160)}`);
+    }
+
+    let data;
+    try{
+      data = JSON.parse(text);
+    }catch(parseErr){
+      throw new Error(`map-data returned non-JSON: ${text.slice(0, 160)}`);
+    }
+
     if(data.error) throw new Error(data.error);
+    if(!data || !Array.isArray(data.locations)){
+      throw new Error('map-data missing locations array');
+    }
+
     placeMarkers(data.locations);
+
+    if(data.locations.length === 0){
+      loadTxt.textContent = 'אין התרעות ב-24 השעות האחרונות';
+      setTimeout(() => { loadEl.style.display = 'none'; }, 1200);
+      return;
+    }
+
     loadEl.style.display = 'none';
   }catch(err){
     loadTxt.textContent = 'שגיאה: ' + err.message;
-    setTimeout(() => { loadEl.style.display = 'none'; }, 3000);
+    setTimeout(() => { loadEl.style.display = 'none'; }, 3500);
   }finally{
     mapLoading = false;
   }
