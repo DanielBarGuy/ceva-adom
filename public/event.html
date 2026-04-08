@@ -189,13 +189,17 @@ const gMarkers = [];
 // ── Load event data ───────────────────────────────────────────────────────────
 async function loadEvent() {
   try {
-    const enc    = encodeURIComponent(alertDate);
-    const res    = await fetch(`/api/events?from=${enc}&to=${enc}&limit=1`);
-    const events = await res.json();
+    const normalizedDate = alertDate.replace('T', ' ');
+    const enc = encodeURIComponent(normalizedDate);
 
-    if (!events.length) throw new Error('האירוע לא נמצא במאגר');
+    const res  = await fetch(`/api/events?from=${enc}&to=${enc}&limit=1`);
+    const data = await res.json();
 
-    const ev = events[0];
+    const eventsArray = Array.isArray(data) ? data : data.items;
+
+    if (!eventsArray || eventsArray.length === 0) throw new Error('האירוע לא נמצא במאגר');
+
+    const ev = eventsArray[0];
     document.title = `אירוע ${fmtFull(ev.alertDate)}`;
 
     document.getElementById('eventHeader').innerHTML = `
