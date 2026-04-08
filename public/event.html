@@ -144,7 +144,7 @@
   <div class="loc-chips" id="locChips"></div>
 </div>
 
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBKVd483xZtL1Jd2ns5_oTBJYK88yT2WjQ"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBKVd483xZtL1Jd2ns5_oTBJYK88yT2WjQ&libraries=marker"></script>
 <script>
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -178,7 +178,7 @@ const DARK_STYLE = [
 
 const map = new google.maps.Map(document.getElementById('map'), {
   center: { lat: 31.5, lng: 34.85 }, zoom: 8,
-  styles: DARK_STYLE,
+  mapId: 'DEMO_MAP_ID',
   gestureHandling: 'cooperative',
   mapTypeControl: false,
   fullscreenControl: true,
@@ -257,7 +257,7 @@ async function geocodeAndPlot(ev) {
 let markersPlaced = false;
 
 function plotMarkers(ev) {
-  gMarkers.forEach(m => m.setMap(null));
+  gMarkers.forEach(m => { m.marker.map = null; });
   gMarkers.length = 0;
 
   const bounds = new google.maps.LatLngBounds();
@@ -267,15 +267,16 @@ function plotMarkers(ev) {
     const coords = coordsMap[name];
     if (!coords) return;
     const [lat, lng] = coords;
-    const marker = new google.maps.Marker({
-      position: { lat, lng },
+    const pin = new google.maps.marker.PinElement({
+      background  : '#d63031',
+      borderColor : '#ff7f7f',
+      glyphColor  : '#fff',
+      scale       : 1.1,
+    });
+    const marker = new google.maps.marker.AdvancedMarkerElement({
+      position : { lat, lng },
       map,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        fillColor: '#d63031', fillOpacity: 1,
-        strokeColor: '#ff7f7f', strokeWeight: 2,
-        scale: 10,
-      },
+      content  : pin.element,
     });
     marker.addListener('click', () => {
       gInfoWindow.setContent(`
@@ -284,7 +285,7 @@ function plotMarkers(ev) {
           <div style="color:#ff7f7f;font-size:.83rem;font-weight:700">${fmtTime(ev.alertDate)}</div>
           <div style="color:#4e4e72;font-size:.78rem;margin-top:2px">${esc(ev.category_desc||'')}</div>
         </div>`);
-      gInfoWindow.open(map, marker);
+      gInfoWindow.open({ anchor: marker, map });
     });
     gMarkers.push({ marker, lat, lng, name });
     bounds.extend({ lat, lng });
@@ -338,7 +339,6 @@ function zoomTo(coords, name) {
   map.setZoom(14);
   const found = gMarkers.find(m => Math.abs(m.lat - lat) < 0.001 && Math.abs(m.lng - lng) < 0.001);
   if (found) {
-    gInfoWindow.open(map, found.marker);
     google.maps.event.trigger(found.marker, 'click');
   }
 }

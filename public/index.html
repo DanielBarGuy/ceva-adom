@@ -697,7 +697,7 @@
 
 <div id="toastContainer"></div>
 
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBKVd483xZtL1Jd2ns5_oTBJYK88yT2WjQ"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBKVd483xZtL1Jd2ns5_oTBJYK88yT2WjQ&libraries=marker"></script>
 <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.umd.js"></script>
 <script>
 // ── State ─────────────────────────────────────────────────────────────────
@@ -1024,7 +1024,7 @@ function initGMap(){
   if(gMap) return;
   gMap = new google.maps.Map(document.getElementById('alertsMap'),{
     center:{lat:31.5,lng:34.85}, zoom:8,
-    styles:DARK_STYLE,
+    mapId:'DEMO_MAP_ID',
     gestureHandling:'cooperative',
     mapTypeControl:false,
     fullscreenControl:true,
@@ -1059,22 +1059,26 @@ function placeMarkers(locations){
   lastMapSig = sig;
 
   // Clear previous markers
-  gMarkers.forEach(m => m.setMap(null));
+  gMarkers.forEach(m => { m.map = null; });
   gMarkers = [];
   if(gClusterer) gClusterer.clearMarkers();
 
   locations.forEach(({ name, lat, lng, count, events }) => {
-    const scale  = Math.min(8 + count * 2, 18);
-    const marker = new google.maps.Marker({
+    const pin = new google.maps.marker.PinElement({
+      background  : '#d63031',
+      borderColor : '#ff7f7f',
+      glyphColor  : '#fff',
+      glyph       : String(count),
+      scale       : Math.min(1 + count * 0.08, 1.8),
+    });
+    const marker = new google.maps.marker.AdvancedMarkerElement({
       position : { lat, lng },
-      icon     : { path: google.maps.SymbolPath.CIRCLE, fillColor: '#d63031', fillOpacity: 1,
-                   strokeColor: '#ff7f7f', strokeWeight: 2, scale },
-      label    : { text: String(count), color: '#fff',
-                   fontSize: count > 9 ? '10px' : '11px', fontWeight: '700', fontFamily: 'Assistant,Arial' },
+      content  : pin.element,
+      zIndex   : count,
     });
     marker.addListener('click', () => {
       gInfoWindow.setContent(buildPopup(name, events, count));
-      gInfoWindow.open(gMap, marker);
+      gInfoWindow.open({ anchor: marker, map: gMap });
     });
     gMarkers.push(marker);
   });
@@ -1087,14 +1091,17 @@ function placeMarkers(locations){
         map: gMap, markers: gMarkers,
         renderer: {
           render({ count, position }){
-            const s = count > 10 ? 22 : count > 3 ? 17 : 13;
-            return new google.maps.Marker({
+            const pin = new google.maps.marker.PinElement({
+              background  : '#8b0000',
+              borderColor : '#ff4757',
+              glyphColor  : '#fff',
+              glyph       : String(count),
+              scale       : count > 10 ? 1.8 : count > 3 ? 1.4 : 1.1,
+            });
+            return new google.maps.marker.AdvancedMarkerElement({
               position,
-              icon  : { path: google.maps.SymbolPath.CIRCLE, fillColor: '#8b0000', fillOpacity: .9,
-                        strokeColor: '#ff4757', strokeWeight: 2, scale: s },
-              label : { text: String(count), color: '#fff',
-                        fontSize: count > 10 ? '13px' : '11px', fontWeight: '700', fontFamily: 'Assistant,Arial' },
-              zIndex: Number(google.maps.Marker.MAX_ZINDEX) + count,
+              content : pin.element,
+              zIndex  : 1000000 + count,
             });
           }
         }
