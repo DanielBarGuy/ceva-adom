@@ -915,22 +915,24 @@ function pagerHtml(){
   const to    = Math.min(currentPage * PAGE_SIZE, totalCount).toLocaleString();
   const total = totalCount.toLocaleString();
 
-  // Build sliding-window page set: always show 1, totalPages, and currentPage±1
-  const show = new Set([1, totalPages]);
-  for(let d = -1; d <= 1; d++){
-    const p = currentPage + d;
-    if(p >= 1 && p <= totalPages) show.add(p);
-  }
-  const pages = [...show].sort((a,b) => a - b);
-
   let btns = '';
-  let prev = 0;
-  for(const pg of pages){
-    if(pg - prev > 1){
-      btns += `<button class="btn" disabled style="cursor:default;opacity:.4">…</button>`;
+  if(totalPages <= 10){
+    // Show all pages when there are 10 or fewer
+    for(let pg = 1; pg <= totalPages; pg++){
+      btns += `<button class="btn${pg === currentPage ? ' active' : ''}" onclick="goPage(${pg})">${pg}</button>`;
     }
-    btns += `<button class="btn${pg === currentPage ? ' active' : ''}" onclick="goPage(${pg})">${pg}</button>`;
-    prev = pg;
+  } else {
+    // Sliding window: page 1, window around currentPage, last page, ellipses in gaps
+    btns += `<button class="btn${currentPage === 1 ? ' active' : ''}" onclick="goPage(1)">1</button>`;
+    const start = Math.max(2, currentPage - 2);
+    const end   = Math.min(totalPages - 1, currentPage + 2);
+    if(start > 2)
+      btns += `<button class="btn" disabled style="cursor:default;opacity:.4">…</button>`;
+    for(let pg = start; pg <= end; pg++)
+      btns += `<button class="btn${pg === currentPage ? ' active' : ''}" onclick="goPage(${pg})">${pg}</button>`;
+    if(end < totalPages - 1)
+      btns += `<button class="btn" disabled style="cursor:default;opacity:.4">…</button>`;
+    btns += `<button class="btn${currentPage === totalPages ? ' active' : ''}" onclick="goPage(${totalPages})">${totalPages}</button>`;
   }
 
   const toLast  = currentPage < totalPages
