@@ -384,7 +384,7 @@ def get_map_data(hours: int):
         if cached and (now_ts - cached['time']) < MAP_CACHE_TTL:
             return cached['data']
 
-    since = (datetime.utcnow() - timedelta(hours=hours)).strftime('%Y-%m-%d %H:%M:%S')
+    since = (datetime.now(ISRAEL_TZ) - timedelta(hours=hours)).strftime('%Y-%m-%d %H:%M:%S')
 
     with _db_lock:
         with sqlite3.connect(DB_FILE) as c:

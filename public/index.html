@@ -1024,7 +1024,7 @@ function initGMap(){
   if(gMap) return;
   gMap = new google.maps.Map(document.getElementById('alertsMap'),{
     center:{lat:31.5,lng:34.85}, zoom:8,
-    mapId:'DEMO_MAP_ID',
+    mapId:'22d502e4d21a29b154722137',
     gestureHandling:'cooperative',
     mapTypeControl:false,
     fullscreenControl:true,
@@ -1140,9 +1140,16 @@ async function showMap(){
       throw new Error('map-data missing locations array');
     }
 
-    placeMarkers(data.locations);
+    // Strict 24-hour client-side filter — guards against cache drift and timezone skew
+    const exact24hAgo = Date.now() - (24 * 60 * 60 * 1000);
+    const filteredLocations = data.locations.map(loc => {
+      const validEvents = loc.events.filter(ev => new Date(ev.alertDate).getTime() >= exact24hAgo);
+      return { ...loc, events: validEvents, count: validEvents.length };
+    }).filter(loc => loc.count > 0);
 
-    if(data.locations.length === 0){
+    placeMarkers(filteredLocations);
+
+    if(filteredLocations.length === 0){
       loadTxt.textContent = 'אין התרעות ב-24 השעות האחרונות';
       setTimeout(() => { loadEl.style.display = 'none'; }, 1200);
       return;
