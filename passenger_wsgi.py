@@ -254,11 +254,65 @@ def _resolve_from(params):
     return params.get('from', [None])[0]
 
 def _api_events(params):
-    from_iso = _resolve_from(params)
-    to_iso   = params.get('to',   [None])[0]
-    limit    = int(params.get('limit', ['2000'])[0])
-    grouped  = params.get('grouped', ['1'])[0] != '0'
-    return 200, _query_events(from_iso, to_iso, limit, grouped)
+    import math
+    from_iso  = _resolve_from(params)
+    to_iso    = params.get('to',       [None])[0]
+    search    = params.get('search',   [None])[0]
+    page_size = int(params.get('pageSize', ['100'])[0])
+    page      = int(params.get('page',     ['1'])[0])
+
+    where, p = [], []
+    if from_iso:
+        where.append('alert_date >= ?'); p.append(from_iso)
+    if to_iso:
+        where.append('alert_date <= ?'); p.append(to_iso)
+    if search:
+        where.append('data LIKE ?'); p.append(f'%{search}%')
+    w = ('WHERE ' + ' AND '.join(where)) if where else ''
+
+    with _db_lock:
+        with sqlite3.connect(DB_FILE) as c:
+            total        = c.execute(f'SELECT COUNT(DISTINCT alert_date) FROM alerts {w}', p).fetchone()[0]
+            total_alerts = c.execute(f'SELECT COUNT(*) FROM alerts {w}', p).fetchone()[0]
+            total_locs   = c.execute(f'SELECT COUNT(DISTINCT data) FROM alerts {w}', p).fetchone()[0]
+
+            total_pages = max(1, math.ceil(total / page_size))
+            safe_page   = min(max(1, page), total_pages)
+            offset      = (safe_page - 1) * page_size
+
+            dates = [r[0] for r in c.execute(
+                f'SELECT alert_date FROM alerts {w} GROUP BY alert_date ORDER BY alert_date DESC LIMIT ? OFFSET ?',
+                p + [page_size, offset]
+            ).fetchall()]
+
+            items = []
+            if dates:
+                ph = ','.join('?' * len(dates))
+                rows = c.execute(
+                    f'SELECT alert_date, group_concat(data, "||"), category, category_desc '
+                    f'FROM alerts WHERE alert_date IN ({ph}) '
+                    f'GROUP BY alert_date ORDER BY alert_date DESC',
+                    dates
+                ).fetchall()
+                for alert_date, loc_raw, category, category_desc in rows:
+                    locs = [l.strip() for l in (loc_raw or '').split('||') if l.strip()]
+                    items.append({
+                        'alertDate'    : alert_date,
+                        'category'     : category,
+                        'category_desc': category_desc or '',
+                        'locations'    : locs,
+                        'count'        : len(locs),
+                    })
+
+    return 200, {
+        'items'         : items,
+        'totalLocations': total_locs,
+        'total'         : total,
+        'totalAlerts'   : total_alerts,
+        'page'          : safe_page,
+        'pageSize'      : page_size,
+        'totalPages'    : total_pages,
+    }
 
 def _api_locations(params):
     from_iso = _resolve_from(params)

@@ -489,21 +489,57 @@ class Handler(SimpleHTTPRequestHandler):
     def _handle_events(self, params):
         try:
             import math
-            from_iso        = self._resolve_from(params)
-            to_iso          = params.get('to',    [None])[0]
-            limit           = int(params.get('limit',    ['2000'])[0])
-            page_size       = int(params.get('pageSize', ['100'])[0])
-            page            = int(params.get('page',     ['1'])[0])
-            grouped         = params.get('grouped', ['1'])[0] != '0'
-            all_events      = query_events(from_iso, to_iso, limit, grouped)
-            total_locs      = count_distinct_locations(from_iso, to_iso)
-            total, total_alerts = count_stats(from_iso, to_iso)
-            total_pages     = max(1, math.ceil(len(all_events) / page_size))
-            safe_page       = min(max(1, page), total_pages)
-            offset          = (safe_page - 1) * page_size
-            page_items      = all_events[offset: offset + page_size]
+            from_iso  = self._resolve_from(params)
+            to_iso    = params.get('to',       [None])[0]
+            search    = params.get('search',   [None])[0]
+            page_size = int(params.get('pageSize', ['100'])[0])
+            page      = int(params.get('page',     ['1'])[0])
+
+            where, p = [], []
+            if from_iso:
+                where.append('alert_date >= ?'); p.append(from_iso)
+            if to_iso:
+                where.append('alert_date <= ?'); p.append(to_iso)
+            if search:
+                where.append('data LIKE ?'); p.append(f'%{search}%')
+            w = ('WHERE ' + ' AND '.join(where)) if where else ''
+
+            with _db_lock:
+                with sqlite3.connect(DB_FILE) as c:
+                    total        = c.execute(f'SELECT COUNT(DISTINCT alert_date) FROM alerts {w}', p).fetchone()[0]
+                    total_alerts = c.execute(f'SELECT COUNT(*) FROM alerts {w}', p).fetchone()[0]
+                    total_locs   = c.execute(f'SELECT COUNT(DISTINCT data) FROM alerts {w}', p).fetchone()[0]
+
+                    total_pages = max(1, math.ceil(total / page_size))
+                    safe_page   = min(max(1, page), total_pages)
+                    offset      = (safe_page - 1) * page_size
+
+                    dates = [r[0] for r in c.execute(
+                        f'SELECT alert_date FROM alerts {w} GROUP BY alert_date ORDER BY alert_date DESC LIMIT ? OFFSET ?',
+                        p + [page_size, offset]
+                    ).fetchall()]
+
+                    items = []
+                    if dates:
+                        ph = ','.join('?' * len(dates))
+                        rows = c.execute(
+                            f'SELECT alert_date, group_concat(data, "||"), category, category_desc '
+                            f'FROM alerts WHERE alert_date IN ({ph}) '
+                            f'GROUP BY alert_date ORDER BY alert_date DESC',
+                            dates
+                        ).fetchall()
+                        for alert_date, loc_raw, category, category_desc in rows:
+                            locs = [l.strip() for l in (loc_raw or '').split('||') if l.strip()]
+                            items.append({
+                                'alertDate'    : alert_date,
+                                'category'     : category,
+                                'category_desc': category_desc or '',
+                                'locations'    : locs,
+                                'count'        : len(locs),
+                            })
+
             self._send_json(200, {
-                'items'         : page_items,
+                'items'         : items,
                 'totalLocations': total_locs,
                 'total'         : total,
                 'totalAlerts'   : total_alerts,

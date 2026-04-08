@@ -911,14 +911,27 @@ function renderView(){
 
 function pagerHtml(){
   if(totalPages <= 1) return '';
-  const from = ((currentPage - 1) * PAGE_SIZE + 1).toLocaleString();
-  const to   = Math.min(currentPage * PAGE_SIZE, totalCount).toLocaleString();
+  const from  = ((currentPage - 1) * PAGE_SIZE + 1).toLocaleString();
+  const to    = Math.min(currentPage * PAGE_SIZE, totalCount).toLocaleString();
   const total = totalCount.toLocaleString();
 
-  const btns = Array.from({length: Math.min(totalPages, 15)}, (_, i) => {
-    const pg = totalPages <= 15 ? i + 1 : Math.round(1 + i * (totalPages - 1) / 14);
-    return `<button class="btn${pg === currentPage ? ' active' : ''}" onclick="goPage(${pg})">${pg}</button>`;
-  }).join('');
+  // Build sliding-window page set: always show 1, totalPages, and currentPage±1
+  const show = new Set([1, totalPages]);
+  for(let d = -1; d <= 1; d++){
+    const p = currentPage + d;
+    if(p >= 1 && p <= totalPages) show.add(p);
+  }
+  const pages = [...show].sort((a,b) => a - b);
+
+  let btns = '';
+  let prev = 0;
+  for(const pg of pages){
+    if(pg - prev > 1){
+      btns += `<button class="btn" disabled style="cursor:default;opacity:.4">…</button>`;
+    }
+    btns += `<button class="btn${pg === currentPage ? ' active' : ''}" onclick="goPage(${pg})">${pg}</button>`;
+    prev = pg;
+  }
 
   const toLast  = currentPage < totalPages
     ? `<button class="btn pager-edge" onclick="goLastPage()" title="לעמוד האחרון – האזעקות הישנות ביותר">«</button>`
@@ -1185,7 +1198,7 @@ async function loadEvents(page = 1, manual = false){
   }
 
   try{
-    const res = await fetch(`/api/events?page=${page}&pageSize=${PAGE_SIZE}&limit=2000${getDateParams()}`);
+    const res = await fetch(`/api/events?page=${page}&pageSize=${PAGE_SIZE}${getDateParams()}`);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(data.error) throw new Error(data.error);
