@@ -1064,16 +1064,20 @@ function placeMarkers(locations){
   if(gClusterer) gClusterer.clearMarkers();
 
   locations.forEach(({ name, lat, lng, count, events }) => {
-    const pin = new google.maps.marker.PinElement({
-      background  : '#d63031',
-      borderColor : '#ff7f7f',
-      glyphColor  : '#fff',
-      glyph       : String(count),
-      scale       : Math.min(1 + count * 0.08, 1.8),
+    const size = Math.min(16 + count * 4, 36);
+    const dot = document.createElement('div');
+    Object.assign(dot.style, {
+      width: `${size}px`, height: `${size}px`,
+      background: '#d63031', border: '2px solid #ff7f7f',
+      borderRadius: '50%', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      color: '#fff', fontWeight: '700', fontFamily: 'sans-serif',
+      fontSize: count > 9 ? '10px' : '11px',
     });
+    dot.textContent = count;
     const marker = new google.maps.marker.AdvancedMarkerElement({
       position : { lat, lng },
-      content  : pin.element,
+      content  : dot,
       zIndex   : count,
     });
     marker.addListener('click', () => {
@@ -1091,16 +1095,20 @@ function placeMarkers(locations){
         map: gMap, markers: gMarkers,
         renderer: {
           render({ count, position }){
-            const pin = new google.maps.marker.PinElement({
-              background  : '#8b0000',
-              borderColor : '#ff4757',
-              glyphColor  : '#fff',
-              glyph       : String(count),
-              scale       : count > 10 ? 1.8 : count > 3 ? 1.4 : 1.1,
+            const size = count > 10 ? 44 : count > 3 ? 34 : 26;
+            const dot = document.createElement('div');
+            Object.assign(dot.style, {
+              width: `${size}px`, height: `${size}px`,
+              background: '#8b0000', border: '2px solid #ff4757',
+              borderRadius: '50%', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontWeight: '700', fontFamily: 'sans-serif',
+              fontSize: count > 10 ? '13px' : '11px',
             });
+            dot.textContent = count;
             return new google.maps.marker.AdvancedMarkerElement({
               position,
-              content : pin.element,
+              content : dot,
               zIndex  : 1000000 + count,
             });
           }

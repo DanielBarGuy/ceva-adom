@@ -267,16 +267,16 @@ function plotMarkers(ev) {
     const coords = coordsMap[name];
     if (!coords) return;
     const [lat, lng] = coords;
-    const pin = new google.maps.marker.PinElement({
-      background  : '#d63031',
-      borderColor : '#ff7f7f',
-      glyphColor  : '#fff',
-      scale       : 1.1,
+    const dot = document.createElement('div');
+    Object.assign(dot.style, {
+      width: '20px', height: '20px',
+      background: '#d63031', border: '2px solid #ff7f7f',
+      borderRadius: '50%',
     });
     const marker = new google.maps.marker.AdvancedMarkerElement({
       position : { lat, lng },
       map,
-      content  : pin.element,
+      content  : dot,
     });
     marker.addListener('click', () => {
       gInfoWindow.setContent(`
