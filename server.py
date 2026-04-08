@@ -146,6 +146,37 @@ def db_stats():
     return total, oldest, newest
 
 
+def count_distinct_locations(from_iso: str = None, to_iso: str = None) -> int:
+    where, params = [], []
+    if from_iso:
+        where.append('alert_date >= ?'); params.append(from_iso)
+    if to_iso:
+        where.append('alert_date <= ?'); params.append(to_iso)
+    sql = 'SELECT COUNT(DISTINCT data) FROM alerts'
+    if where:
+        sql += ' WHERE ' + ' AND '.join(where)
+    with _db_lock:
+        with sqlite3.connect(DB_FILE) as c:
+            return c.execute(sql, params).fetchone()[0]
+
+
+def count_stats(from_iso: str = None, to_iso: str = None):
+    """Returns (total_distinct_dates, total_alerts) for the given range."""
+    where, params = [], []
+    if from_iso:
+        where.append('alert_date >= ?'); params.append(from_iso)
+    if to_iso:
+        where.append('alert_date <= ?'); params.append(to_iso)
+    clause = (' WHERE ' + ' AND '.join(where)) if where else ''
+    with _db_lock:
+        with sqlite3.connect(DB_FILE) as c:
+            total_dates  = c.execute(
+                f'SELECT COUNT(DISTINCT alert_date) FROM alerts{clause}', params).fetchone()[0]
+            total_alerts = c.execute(
+                f'SELECT COUNT(*) FROM alerts{clause}', params).fetchone()[0]
+    return total_dates, total_alerts
+
+
 # ── Fetch from oref ───────────────────────────────────────────────────────────
 
 def fetch_and_store():
@@ -314,12 +345,29 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _handle_events(self, params):
         try:
-            from_iso = self._resolve_from(params)
-            to_iso   = params.get('to',   [None])[0]
-            limit    = int(params.get('limit', ['2000'])[0])
-            grouped  = params.get('grouped', ['1'])[0] != '0'
-            events   = query_events(from_iso, to_iso, limit, grouped)
-            self._send_json(200, events)
+            import math
+            from_iso        = self._resolve_from(params)
+            to_iso          = params.get('to',    [None])[0]
+            limit           = int(params.get('limit',    ['2000'])[0])
+            page_size       = int(params.get('pageSize', ['100'])[0])
+            page            = int(params.get('page',     ['1'])[0])
+            grouped         = params.get('grouped', ['1'])[0] != '0'
+            all_events      = query_events(from_iso, to_iso, limit, grouped)
+            total_locs      = count_distinct_locations(from_iso, to_iso)
+            total, total_alerts = count_stats(from_iso, to_iso)
+            total_pages     = max(1, math.ceil(len(all_events) / page_size))
+            safe_page       = min(max(1, page), total_pages)
+            offset          = (safe_page - 1) * page_size
+            page_items      = all_events[offset: offset + page_size]
+            self._send_json(200, {
+                'items'         : page_items,
+                'totalLocations': total_locs,
+                'total'         : total,
+                'totalAlerts'   : total_alerts,
+                'page'          : safe_page,
+                'pageSize'      : page_size,
+                'totalPages'    : total_pages,
+            })
         except Exception as e:
             self._send_json(500, {'error': str(e)})
 

@@ -246,15 +246,16 @@ async function queryEventsPaged(page, pageSize, fromIso, toIso, search) {
   if (fromIso) { conds.push('alert_date >= ?'); params.push(fromIso); }
   if (toIso)   { conds.push('alert_date <= ?'); params.push(toIso); }
 
-  let total, totalAlerts, rows;
+  let total, totalAlerts, totalLocations, rows;
 
   if (search) {
     const sConds  = [...conds, 'data LIKE ?'];
     const sParams = [...params, `%${search}%`];
     const sWhere  = ' WHERE ' + sConds.join(' AND ');
 
-    ({ total }       = await dbGet(`SELECT COUNT(DISTINCT alert_date) AS total FROM alerts${sWhere}`, sParams));
-    ({ totalAlerts } = await dbGet(`SELECT COUNT(*) AS totalAlerts FROM alerts${sWhere}`, sParams));
+    ({ total }          = await dbGet(`SELECT COUNT(DISTINCT alert_date) AS total FROM alerts${sWhere}`, sParams));
+    ({ totalAlerts }    = await dbGet(`SELECT COUNT(*) AS totalAlerts FROM alerts${sWhere}`, sParams));
+    ({ totalLocations } = await dbGet(`SELECT COUNT(DISTINCT data) AS totalLocations FROM alerts${sWhere}`, sParams));
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const safePage   = Math.min(Math.max(1, page), totalPages);
@@ -267,14 +268,15 @@ async function queryEventsPaged(page, pageSize, fromIso, toIso, search) {
        GROUP BY alert_date ORDER BY alert_date DESC LIMIT ? OFFSET ?`,
       [...sParams, pageSize, offset]
     );
-    return { items: rows.map(rowToEvent), total, totalAlerts, page: safePage, pageSize, totalPages };
+    return { items: rows.map(rowToEvent), total, totalAlerts, totalLocations, page: safePage, pageSize, totalPages };
 
   } else {
     const where = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
 
-    ({ total }       = await dbGet(
+    ({ total }          = await dbGet(
       `SELECT COUNT(*) AS total FROM (SELECT 1 FROM alerts${where} GROUP BY alert_date)`, params));
-    ({ totalAlerts } = await dbGet(`SELECT COUNT(*) AS totalAlerts FROM alerts${where}`, params));
+    ({ totalAlerts }    = await dbGet(`SELECT COUNT(*) AS totalAlerts FROM alerts${where}`, params));
+    ({ totalLocations } = await dbGet(`SELECT COUNT(DISTINCT data) AS totalLocations FROM alerts${where}`, params));
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const safePage   = Math.min(Math.max(1, page), totalPages);
@@ -286,7 +288,7 @@ async function queryEventsPaged(page, pageSize, fromIso, toIso, search) {
        GROUP BY alert_date ORDER BY alert_date DESC LIMIT ? OFFSET ?`,
       [...params, pageSize, offset]
     );
-    return { items: rows.map(rowToEvent), total, totalAlerts, page: safePage, pageSize, totalPages };
+    return { items: rows.map(rowToEvent), total, totalAlerts, totalLocations, page: safePage, pageSize, totalPages };
   }
 }
 

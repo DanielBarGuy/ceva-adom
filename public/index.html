@@ -602,6 +602,15 @@
     <span class="op-dates">09.05–13.05.2023</span>
   </button>
   <div class="op-divider"></div>
+  <button class="op-btn" onclick="setOperation('2024-09-19','2024-11-27','חיצי הצפון')">
+    <span class="op-name">חיצי הצפון</span>
+    <span class="op-dates">19.09–27.11.2024</span>
+  </button>
+  <button class="op-btn" onclick="setOperation('2025-06-13','2025-06-24','עם כלביא')">
+    <span class="op-name">עם כלביא</span>
+    <span class="op-dates">13.06–24.06.2025</span>
+  </button>
+  <div class="op-divider"></div>
   <button class="op-btn op-iron-swords" onclick="setOperation('2023-10-07',null,'חרבות ברזל')">
     <span class="op-name">⚔ חרבות ברזל</span>
     <span class="op-dates">07.10.2023 – היום</span>
@@ -958,10 +967,10 @@ function renderGrid(c, data){
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────
-function updateStats(events){
+function updateStats(events, totalLocations){
   document.getElementById('statsBar').style.display = events.length ? 'flex' : 'none';
   if(!events.length) return;
-  const uniqueLocs = new Set(events.flatMap(e=>e.locations)).size;
+  const uniqueLocs = totalLocations ?? new Set(events.flatMap(e=>e.locations)).size;
   const lastHour   = events.filter(e=>Date.now()-new Date(e.alertDate)<3600000).length;
   countUp(document.getElementById('statLocations'), uniqueLocs);
   countUp(document.getElementById('statLastHour'),  lastHour);
@@ -1129,18 +1138,21 @@ async function loadEvents(page = 1, manual = false){
 
     // Support both paginated (new server) and legacy array (old server)
     const isLegacy = Array.isArray(data);
+    let statLocations;
     if (isLegacy) {
-      totalPages  = Math.ceil(data.length / PAGE_SIZE);
-      totalCount  = data.length;
-      totalAlerts = data.reduce((s,e)=>s+e.count,0);
-      currentPage = Math.min(page, totalPages);
-      allEvents   = data.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+      totalPages    = Math.ceil(data.length / PAGE_SIZE);
+      totalCount    = data.length;
+      totalAlerts   = data.reduce((s,e)=>s+e.count,0);
+      currentPage   = Math.min(page, totalPages);
+      allEvents     = data.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+      statLocations = new Set(data.flatMap(e=>e.locations)).size;
     } else {
-      allEvents   = data.items;
-      currentPage = data.page;
-      totalPages  = data.totalPages;
-      totalCount  = data.total;
-      totalAlerts = data.totalAlerts;
+      allEvents     = data.items;
+      currentPage   = data.page;
+      totalPages    = data.totalPages;
+      totalCount    = data.total;
+      totalAlerts   = data.totalAlerts;
+      statLocations = data.totalLocations ?? new Set(allEvents.flatMap(e=>e.locations)).size;
     }
 
     const now = new Date();
@@ -1148,7 +1160,7 @@ async function loadEvents(page = 1, manual = false){
       `<span class="live-badge"><span class="live-badge-dot"></span>LIVE</span>
        <span>עודכן: ${now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>`;
 
-    updateStats(allEvents);
+    updateStats(allEvents, statLocations);
     refreshDbBanner();
 
     if(currentView!=='map') renderView();
