@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>צבע אדום – אירועים</title>
+  <title>צבע אדום</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
 
@@ -593,7 +593,7 @@
     <span class="op-name">שומר החומות</span>
     <span class="op-dates">10.05–21.05.2021</span>
   </button>
-  <button class="op-btn" onclick="setOperation('2022-08-05','2022-08-07','שחר')">
+  <button class="op-btn" onclick="setOperation('2022-08-05','2022-08-07','עלות השחר')">
     <span class="op-name">עלות השחר</span>
     <span class="op-dates">05.08–07.08.2022</span>
   </button>
@@ -782,7 +782,7 @@ function setOperation(from, to, label) {
 
   document.title = label && label !== 'all'
     ? `צבע אדום – ${label}`
-    : 'צבע אדום – אירועים';
+    : 'צבע אדום';
 
   document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('active'));
   const allBtn = document.getElementById('opAll');
