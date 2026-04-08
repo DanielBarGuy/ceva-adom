@@ -192,7 +192,7 @@ async function loadEvent() {
     const normalizedDate = alertDate.replace('T', ' ');
     const enc = encodeURIComponent(normalizedDate);
 
-    const res  = await fetch(`/api/events?from=${enc}&to=${enc}&limit=1`);
+    const res  = await fetch(`/api/events?from=${enc}&to=${enc}&pageSize=1`);
     const data = await res.json();
 
     const eventsArray = Array.isArray(data) ? data : data.items;
