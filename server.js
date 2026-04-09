@@ -412,6 +412,31 @@ app.get('/api/map-data', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/top-locations', async (req, res) => {
+  try {
+    const from   = req.query.from   || null;
+    const to     = req.query.to     || null;
+    const search = req.query.search ? req.query.search.trim() : null;
+    const limit  = Math.min(parseInt(req.query.limit) || 20, 100);
+
+    const conds  = [];
+    const params = [];
+    if (from)   { conds.push('alert_date >= ?'); params.push(from); }
+    if (to)     { conds.push('alert_date <= ?'); params.push(to); }
+    if (search) { conds.push('data LIKE ?'); params.push(`%${search}%`); }
+
+    const where = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
+
+    const rows = await dbAll(
+      `SELECT data AS name, COUNT(*) AS count
+       FROM alerts${where}
+       GROUP BY data ORDER BY count DESC LIMIT ?`,
+      [...params, limit]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/stats', async (req, res) => {
   try {
     const { total } = await dbGet('SELECT COUNT(*) AS total FROM alerts');
