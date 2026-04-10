@@ -11,7 +11,7 @@ const DB_FILE  = path.join(BASE_DIR, 'alerts.db');
 const CACHE_FILE = path.join(BASE_DIR, 'geocache.json');
 
 const OREF_URL = 'https://alerts-history.oref.org.il/Shared/Ajax/GetAlarmsHistory.aspx?lang=he&mode=1';
-const LIVE_URL = 'https://www.oref.org.il/WarningMessages/Alert/alerts.json';
+const LIVE_URL = 'https://redalert.orielhaim.com/api/active';
 const OREF_HEADERS = {
   'Referer'         : 'https://www.oref.org.il/',
   'X-Requested-With': 'XMLHttpRequest',
@@ -150,13 +150,23 @@ function startFetchLoop() {
 
 // ── Live feed (real-time) ─────────────────────────────────────────────────────
 
+// Generate a deterministic rid from alertType + city + minute (avoids duplicates within same minute)
+function simpleHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+  return Math.abs(h);
+}
+
 async function fetchLiveAndStore() {
-  const resp = await fetch(LIVE_URL, { headers: OREF_HEADERS });
+  const resp = await fetch(LIVE_URL);
   const text = await resp.text();
   const trimmed = text.trim();
   if (!trimmed || trimmed === '{}' || trimmed.startsWith('<')) return [];
-  const data = JSON.parse(text);
-  if (!Array.isArray(data) || !data.length) return [];
+  const data = JSON.parse(trimmed);
+  if (typeof data !== 'object' || !Object.keys(data).length) return [];
+
+  const now    = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const minute = now.slice(0, 16); // YYYY-MM-DD HH:MM — for dedup key
 
   return new Promise((resolve, reject) => {
     const inserted = [];
@@ -164,23 +174,22 @@ async function fetchLiveAndStore() {
       const stmt = db.prepare(
         'INSERT OR IGNORE INTO alerts (rid,data,alert_date,category,category_desc,matrix_id) VALUES (?,?,?,?,?,?)'
       );
-      for (const r of data) {
-        stmt.run(
-          r.rid, r.data || '', r.alertDate || '',
-          r.category, r.category_desc || '', r.matrix_id,
-          function(err) {
+      for (const [alertType, cities] of Object.entries(data)) {
+        for (const city of cities) {
+          const rid = simpleHash(`${alertType}:${city}:${minute}`);
+          stmt.run(rid, city, now, null, alertType, null, function(err) {
             if (!err && this.changes > 0) {
               inserted.push({
-                rid          : r.rid,
-                alertDate    : r.alertDate || '',
-                locations    : r.data ? [r.data] : [],
-                category     : r.category,
-                category_desc: r.category_desc || '',
-                count        : r.data ? 1 : 0,
+                rid,
+                alertDate    : now,
+                locations    : [city],
+                category     : null,
+                category_desc: alertType,
+                count        : 1,
               });
             }
-          }
-        );
+          });
+        }
       }
       stmt.finalize(err => err ? reject(err) : resolve(inserted));
     });
@@ -409,31 +418,6 @@ app.get('/api/map-data', async (req, res) => {
     const result = { generatedAt: new Date().toISOString(), hours, locations };
     mapDataCacheByHours[hours] = { data: result, time: Date.now() };
     res.json(result);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/top-locations', async (req, res) => {
-  try {
-    const from   = req.query.from   || null;
-    const to     = req.query.to     || null;
-    const search = req.query.search ? req.query.search.trim() : null;
-    const limit  = Math.min(parseInt(req.query.limit) || 20, 100);
-
-    const conds  = [];
-    const params = [];
-    if (from)   { conds.push('alert_date >= ?'); params.push(from); }
-    if (to)     { conds.push('alert_date <= ?'); params.push(to); }
-    if (search) { conds.push('data LIKE ?'); params.push(`%${search}%`); }
-
-    const where = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
-
-    const rows = await dbAll(
-      `SELECT data AS name, COUNT(*) AS count
-       FROM alerts${where}
-       GROUP BY data ORDER BY count DESC LIMIT ?`,
-      [...params, limit]
-    );
-    res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

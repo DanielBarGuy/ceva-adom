@@ -513,41 +513,6 @@
     }
     .map-info-tooltip.visible { display: block; }
 
-    /* ── Top Locations ── */
-    .top-list { display: flex; flex-direction: column; gap: 5px; }
-    .top-item {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-right: 3px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 16px;
-      animation: fadeInUp .28s ease both;
-      transition: background var(--trans), border-color var(--trans);
-    }
-    .top-item:hover { background: var(--bg-elevated); border-right-color: var(--red); }
-    .top-item-1 { border-right-color: #ffd700; background: rgba(255,215,0,.04); }
-    .top-item-2 { border-right-color: #c0c0c0; background: rgba(192,192,192,.04); }
-    .top-item-3 { border-right-color: #cd7f32; background: rgba(205,127,50,.04); }
-    .top-item-1:hover { background: rgba(255,215,0,.08); }
-    .top-item-2:hover { background: rgba(192,192,192,.08); }
-    .top-item-3:hover { background: rgba(205,127,50,.08); }
-    .top-rank  { min-width: 30px; text-align: center; font-size: 1.1rem; line-height: 1; }
-    .top-num   { font-size: .78rem; font-weight: 800; color: var(--text-muted); }
-    .top-name  { flex: 1; min-width: 0; font-size: .92rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .top-bar-wrap { flex: 2; background: var(--bg-elevated); border-radius: 4px; height: 7px; overflow: hidden; min-width: 60px; }
-    .top-bar   { height: 100%; background: var(--red); border-radius: 4px; transition: width .8s cubic-bezier(.4,0,.2,1); }
-    .top-item-1 .top-bar { background: #ffd700; }
-    .top-item-2 .top-bar { background: #a0a0a0; }
-    .top-item-3 .top-bar { background: #cd7f32; }
-    .top-count { min-width: 40px; text-align: left; font-size: .9rem; font-weight: 800; color: var(--red-bright); direction: ltr; font-variant-numeric: tabular-nums; }
-    .top-item-1 .top-count { color: #ffd700; }
-    .top-item-2 .top-count { color: #c0c0c0; }
-    .top-item-3 .top-count { color: #cd7f32; }
-    .top-subtitle { font-size: .74rem; color: var(--text-muted); margin-bottom: 12px; }
-
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .war-title  { display: none; }
@@ -681,7 +646,6 @@
     <div class="view-toggle">
       <button class="btn active" id="btnList" onclick="setView('list')">רשימה</button>
       <button class="btn"        id="btnMap"  onclick="setView('map')">🗺 מפה</button>
-      <button class="btn"        id="btnTop"  onclick="setView('top')">🏆 Top</button>
     </div>
     <div class="map-info-wrap">
       <button class="map-info-btn" id="mapInfoBtn" onclick="toggleMapInfo(event)" aria-label="מידע על המפה">i</button>
@@ -910,7 +874,7 @@ function filtered(){ return allEvents; } // search is handled server-side
 // ── View switching ────────────────────────────────────────────────────────
 function setView(v){
   currentView = v;
-  ['list','map','top'].forEach(n => {
+  ['list','map'].forEach(n => {
     const btn = document.getElementById('btn' + n.charAt(0).toUpperCase() + n.slice(1));
     if (btn) btn.classList.toggle('active', n === v);
   });
@@ -920,10 +884,6 @@ function setView(v){
     main.style.display    = 'none';
     mapWrap.style.display = 'flex';
     showMap();
-  } else if(v==='top'){
-    main.style.display    = '';
-    mapWrap.style.display = 'none';
-    loadTopLocations();
   } else {
     main.style.display    = '';
     mapWrap.style.display = 'none';
@@ -933,7 +893,7 @@ function setView(v){
 
 // ── Render ────────────────────────────────────────────────────────────────
 function renderView(){
-  if(currentView==='map' || currentView==='top') return;
+  if(currentView==='map') return;
   const c = document.getElementById('mainContent');
   if(!allEvents.length){
     c.innerHTML = totalCount === 0
@@ -1268,9 +1228,7 @@ async function loadEvents(page = 1, manual = false){
     updateStats(allEvents, statLocations);
     refreshDbBanner();
 
-    if(currentView==='map')      { /* SSE handles live map updates */ }
-    else if(currentView==='top') { loadTopLocations(); }
-    else                         { renderView(); }
+    if(currentView!=='map') renderView();
 
   }catch(err){
     if(currentView!=='map'){
@@ -1330,50 +1288,6 @@ function connectStream(){
     if(alertsStream){ alertsStream.close(); alertsStream = null; }
     setTimeout(connectStream, 2000);
   };
-}
-
-// ── Top Locations ─────────────────────────────────────────────────────────
-async function loadTopLocations() {
-  const c = document.getElementById('mainContent');
-  c.innerHTML = `<div class="status-msg loading"><div class="spinner"></div><div>טוען נתונים...</div></div>`;
-  try {
-    const res  = await fetch(`/api/top-locations?limit=20${getDateParams()}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    renderTopLocations(c, data);
-  } catch(err) {
-    c.innerHTML = `<div class="status-msg error"><span class="icon">⚠️</span><div>${esc(err.message)}</div></div>`;
-  }
-}
-
-function renderTopLocations(c, data) {
-  if (!data.length) {
-    c.innerHTML = `<div class="status-msg"><span class="icon">✅</span><div>אין אזעקות בטווח הזמן הנבחר</div></div>`;
-    return;
-  }
-  const max    = data[0].count;
-  const medals = ['🥇','🥈','🥉'];
-  const label  = activeOperation && activeOperation !== 'all' ? activeOperation : 'הטווח הנבחר';
-
-  const rows = data.map((item, i) => {
-    const rankClass = i < 3 ? ` top-item-${i+1}` : '';
-    const rankBadge = i < 3
-      ? medals[i]
-      : `<span class="top-num">${i+1}</span>`;
-    const pct = Math.round((item.count / max) * 100);
-    return `
-      <div class="top-item${rankClass}" style="animation-delay:${i*30}ms">
-        <div class="top-rank">${rankBadge}</div>
-        <div class="top-name">${esc(item.name)}</div>
-        <div class="top-bar-wrap"><div class="top-bar" style="width:${pct}%"></div></div>
-        <div class="top-count">${item.count.toLocaleString()}</div>
-      </div>`;
-  }).join('');
-
-  c.innerHTML = `
-    <div class="section-title">TOP ${data.length} יישובים — ${esc(label)}</div>
-    <div class="top-subtitle">מספר האזעקות לפי יישוב</div>
-    <div class="top-list">${rows}</div>`;
 }
 
 // ── Map info tooltip ──────────────────────────────────────────────────────
