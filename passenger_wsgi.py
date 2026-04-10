@@ -20,6 +20,43 @@ OREF_URL = (
 LIVE_URL      = 'https://www.oref.org.il/WarningMessages/Alert/alerts.json'
 NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
 
+# Hardcoded coords for locations Nominatim consistently gets wrong.
+# Checked before any HTTP request — key = exact Oref zone name.
+STATIC_COORDS = {
+    "חמד"                 : [32.0016, 34.8317],
+    "גן יבנה"             : [31.7833, 34.7000],
+    "בארות יצחק"          : [31.9667, 34.8833],
+    "תל אביב - יפו"       : [32.0853, 34.7818],
+    "ירושלים"             : [31.7683, 35.2137],
+    "חיפה"                : [32.7940, 34.9896],
+    "באר שבע"             : [31.2518, 34.7913],
+    "ראשון לציון"          : [31.9730, 34.7925],
+    "פתח תקווה"           : [32.0841, 34.8878],
+    "אשדוד"               : [31.8040, 34.6550],
+    "אשקלון"              : [31.6693, 34.5715],
+    "נתניה"               : [32.3215, 34.8532],
+    "בני ברק"             : [32.0840, 34.8340],
+    "חולון"               : [32.0107, 34.7796],
+    "רמת גן"              : [32.0707, 34.8238],
+    "רחובות"              : [31.8928, 34.8113],
+    "בת ים"               : [32.0233, 34.7503],
+    "בית שמש"             : [31.7473, 34.9873],
+    "הרצליה"              : [32.1659, 34.8439],
+    "כפר סבא"             : [32.1752, 34.9078],
+    "לוד"                 : [31.9514, 34.8953],
+    "רמלה"                : [31.9290, 34.8700],
+    "עכו"                 : [32.9282, 35.0714],
+    "נהריה"               : [33.0043, 35.0982],
+    "טבריה"               : [32.7922, 35.5312],
+    "צפת"                 : [32.9641, 35.4956],
+    "קריית שמונה"          : [33.2074, 35.5699],
+    "אילת"                : [29.5577, 34.9519],
+    "שדרות"               : [31.5242, 34.5961],
+    "נתיבות"              : [31.4228, 34.5905],
+    # Specific POIs Nominatim gets wrong
+    "בית העלמין החדש עכו" : [32.9348, 35.1054],
+}
+
 OREF_HEADERS = {
     'Referer'         : 'https://www.oref.org.il/',
     'X-Requested-With': 'XMLHttpRequest',
@@ -211,16 +248,27 @@ def _save_geocache():
 def _clean_city_name(name):
     """Strip Pikud HaOref zone suffixes so Nominatim finds the actual city."""
     clean = name.replace('אזור תעשייה', '').replace('פארק תעשייה', '')
-    clean = re.sub(r'\s*-.*$', '', clean)   # remove " - צפון" etc.
+    clean = re.sub(r'\s+-.*$', '', clean)   # remove " - צפון" etc. (\s+ requires space before hyphen)
     clean = re.sub(r'\(.*?\)', '', clean)    # remove parentheses
     return clean.strip()
 
 
 def _geocode_location(name):
     global _last_nominatim
+    clean_name = _clean_city_name(name)
+    # 1. Static dictionary — highest priority, never wrong
+    for key in (name, clean_name):
+        if key in STATIC_COORDS:
+            coords = STATIC_COORDS[key]
+            with _geocache_lock:
+                _geocache[name] = coords
+            _save_geocache()
+            return coords
+    # 2. In-memory cache
     with _geocache_lock:
         if name in _geocache:
             return _geocache[name]
+    # 3. Nominatim — skip streets/buildings, keep everything else
     with _nominatim_lock:
         with _geocache_lock:
             if name in _geocache:
@@ -230,13 +278,19 @@ def _geocode_location(name):
             time.sleep(1.1 - elapsed)
         _last_nominatim = time.time()
         try:
-            clean_name = _clean_city_name(name)
             url = (f'{NOMINATIM_URL}?q={quote(clean_name + " ישראל")}'
-                   '&countrycodes=il&format=json&limit=1&accept-language=he')
-            req = Request(url, headers={'User-Agent': 'CevaAdom/1.0'})
+                   '&countrycodes=il&format=json&limit=5&accept-language=he')
+            req = Request(url, headers={'User-Agent': 'CevaAdom/1.2'})
             with urlopen(req, timeout=8) as resp:
                 results = json.loads(resp.read().decode('utf-8'))
-            coords = [float(results[0]['lat']), float(results[0]['lon'])] if results else None
+            coords = None
+            if results:
+                for res in results:
+                    if res.get('class') not in ('highway', 'building'):
+                        coords = [float(res['lat']), float(res['lon'])]
+                        break
+                if coords is None:  # everything was a street — take first anyway
+                    coords = [float(results[0]['lat']), float(results[0]['lon'])]
         except Exception:
             coords = None
     with _geocache_lock:
@@ -305,6 +359,8 @@ def _api_events(params):
                 ).fetchall()
                 for alert_date, loc_raw, category, category_desc in rows:
                     locs = [l.strip() for l in (loc_raw or '').split('||') if l.strip()]
+                    if search:
+                        locs.sort(key=lambda x: search not in x)
                     items.append({
                         'alertDate'    : alert_date,
                         'category'     : category,
@@ -332,7 +388,7 @@ def _api_locations(params):
         for loc in ev['locations']:
             freq[loc] = freq.get(loc, 0) + 1
     ranked = sorted(freq, key=freq.get, reverse=True)
-    result = _geocode_batch(ranked, max_new=100)
+    result = _geocode_batch(ranked, max_new=250)
     with _geocache_lock:
         pending = sum(1 for n in ranked if n not in _geocache)
     if pending:
@@ -344,7 +400,7 @@ def _api_geocode(params):
     names = [n.strip() for n in raw.split(',') if n.strip()]
     if not names:
         return 400, {'error': 'missing names parameter'}
-    result = _geocode_batch(names, max_new=100)
+    result = _geocode_batch(names, max_new=250)
     with _geocache_lock:
         pending = sum(1 for n in names if n not in _geocache)
     if pending:
