@@ -68,16 +68,24 @@ function saveGeoCache() {
 
 let lastNominatim = 0;
 
+function cleanCityName(name) {
+  let clean = name.replace(/אזור תעשייה/g, '').replace(/פארק תעשייה/g, '');
+  clean = clean.replace(/\s*-.*$/, '');      // remove " - צפון" etc.
+  clean = clean.replace(/\(.*?\)/g, '');     // remove parentheses
+  return clean.trim();
+}
+
 async function geocodeLocation(name) {
   if (name in geocache) return geocache[name];
   const wait = 1100 - (Date.now() - lastNominatim);
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   lastNominatim = Date.now();
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name + ' ישראל')}&countrycodes=il&format=json&limit=1&accept-language=he`;
+    const cleanName = cleanCityName(name);
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanName + ' ישראל')}&countrycodes=il&format=json&limit=1&accept-language=he`;
     const resp = await fetch(url, { headers: { 'User-Agent': 'CevaAdom/1.0' } });
     const results = await resp.json();
-    geocache[name] = results.length
+    geocache[name] = results.length  // key stays as original zone name
       ? [parseFloat(results[0].lat), parseFloat(results[0].lon)]
       : null;
   } catch { geocache[name] = null; }

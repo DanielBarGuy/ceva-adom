@@ -4,7 +4,7 @@ Hostinger / Phusion Passenger entry-point for Ceva Adom.
 directly by the web-server (LiteSpeed/Apache) without touching Python.
 """
 
-import json, os, sys, time, sqlite3, threading
+import json, os, sys, time, sqlite3, threading, re
 from urllib.request import Request, urlopen
 from urllib.parse import quote, parse_qs
 from datetime import datetime, timedelta, timezone
@@ -208,6 +208,14 @@ def _save_geocache():
     except Exception:
         pass
 
+def _clean_city_name(name):
+    """Strip Pikud HaOref zone suffixes so Nominatim finds the actual city."""
+    clean = name.replace('אזור תעשייה', '').replace('פארק תעשייה', '')
+    clean = re.sub(r'\s*-.*$', '', clean)   # remove " - צפון" etc.
+    clean = re.sub(r'\(.*?\)', '', clean)    # remove parentheses
+    return clean.strip()
+
+
 def _geocode_location(name):
     global _last_nominatim
     with _geocache_lock:
@@ -222,7 +230,8 @@ def _geocode_location(name):
             time.sleep(1.1 - elapsed)
         _last_nominatim = time.time()
         try:
-            url = (f'{NOMINATIM_URL}?q={quote(name + " ישראל")}'
+            clean_name = _clean_city_name(name)
+            url = (f'{NOMINATIM_URL}?q={quote(clean_name + " ישראל")}'
                    '&countrycodes=il&format=json&limit=1&accept-language=he')
             req = Request(url, headers={'User-Agent': 'CevaAdom/1.0'})
             with urlopen(req, timeout=8) as resp:
@@ -231,7 +240,7 @@ def _geocode_location(name):
         except Exception:
             coords = None
     with _geocache_lock:
-        _geocache[name] = coords
+        _geocache[name] = coords  # key stays as original zone name
     _save_geocache()
     return coords
 
