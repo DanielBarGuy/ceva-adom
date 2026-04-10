@@ -935,7 +935,7 @@ async function loadCharts(){
       data: {
         labels  : data.daily.map(d => d.date),
         datasets: [{
-          label          : 'התרעות ליום',
+          label          : 'התרעות ליום (לפי ישוב)',
           data           : data.daily.map(d => d.count),
           backgroundColor: 'rgba(220,38,38,0.75)',
           borderColor    : '#dc2626',

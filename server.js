@@ -10,14 +10,68 @@ const BASE_DIR = __dirname;
 const DB_FILE  = path.join(BASE_DIR, 'alerts.db');
 const CACHE_FILE = path.join(BASE_DIR, 'geocache.json');
 
-const OREF_URL = 'https://alerts-history.oref.org.il/Shared/Ajax/GetAlarmsHistory.aspx?lang=he&mode=1';
-const LIVE_URL = 'https://redalert.orielhaim.com/api/active';
+const OREF_URL  = 'https://alerts-history.oref.org.il/Shared/Ajax/GetAlarmsHistory.aspx?lang=he&mode=1';
+const LIVE_URL  = 'https://redalert.orielhaim.com/api/active';
+const NOM_URL   = 'https://nominatim.openstreetmap.org/search';
+const ISRAEL_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC+3
+
 const OREF_HEADERS = {
   'Referer'         : 'https://www.oref.org.il/',
   'X-Requested-With': 'XMLHttpRequest',
   'Accept'          : 'application/json, text/javascript, */*; q=0.01',
   'Accept-Language' : 'he',
   'User-Agent'      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+};
+
+const MAP_EXCLUDED_CATS = new Set([
+  'סיום אירוע',
+  'האירוע הסתיים',
+  'בדקות הקרובות צפויות להתקבל התרעות באזורך',
+]);
+
+const MAP_CACHE_TTL = 60 * 1000; // 60 seconds
+
+// ── Static coords — checked before Nominatim, never wrong ────────────────────
+const STATIC_COORDS = {
+  // Problematic moshavim Nominatim confuses with streets
+  'חמד'                 : [32.0016, 34.8317],
+  'גן יבנה'             : [31.7833, 34.7000],
+  'בארות יצחק'          : [31.9667, 34.8833],
+  'כפר ביל'             : [31.9500, 34.9000],
+  // Major cities — skip Nominatim entirely
+  'תל אביב - יפו'       : [32.0853, 34.7818],
+  'ירושלים'             : [31.7683, 35.2137],
+  'חיפה'                : [32.7940, 34.9896],
+  'באר שבע'             : [31.2518, 34.7913],
+  'ראשון לציון'          : [31.9730, 34.7925],
+  'פתח תקווה'           : [32.0841, 34.8878],
+  'אשדוד'               : [31.8040, 34.6550],
+  'אשקלון'              : [31.6693, 34.5715],
+  'נתניה'               : [32.3215, 34.8532],
+  'בני ברק'             : [32.0840, 34.8340],
+  'חולון'               : [32.0107, 34.7796],
+  'רמת גן'              : [32.0707, 34.8238],
+  'רחובות'              : [31.8928, 34.8113],
+  'בת ים'               : [32.0233, 34.7503],
+  'בית שמש'             : [31.7473, 34.9873],
+  'הרצליה'              : [32.1659, 34.8439],
+  'כפר סבא'             : [32.1752, 34.9078],
+  'מודיעין מכבים רעות'  : [31.8969, 35.0104],
+  'לוד'                 : [31.9514, 34.8953],
+  'רמלה'                : [31.9290, 34.8700],
+  'עכו'                 : [32.9282, 35.0714],
+  'נהריה'               : [33.0043, 35.0982],
+  'טבריה'               : [32.7922, 35.5312],
+  'צפת'                 : [32.9641, 35.4956],
+  'קריית שמונה'          : [33.2074, 35.5699],
+  'אילת'                : [29.5577, 34.9519],
+  'דימונה'              : [31.0657, 35.0326],
+  'אופקים'              : [31.3133, 34.6215],
+  'שדרות'               : [31.5242, 34.5961],
+  'נתיבות'              : [31.4228, 34.5905],
+  'ערד'                 : [31.2587, 35.2127],
+  // Specific POIs Nominatim gets wrong
+  'בית העלמין החדש עכו' : [32.9348, 35.1054],
 };
 
 // ── SQLite ────────────────────────────────────────────────────────────────────
@@ -49,6 +103,18 @@ function dbGet(sql, params = []) {
   );
 }
 
+// ── Israel time helpers ───────────────────────────────────────────────────────
+
+function nowIsrael() {
+  return new Date(Date.now() + ISRAEL_OFFSET_MS);
+}
+function israelIso(date = nowIsrael()) {
+  return date.toISOString().replace('T', ' ').slice(0, 19);
+}
+function israelIsoAgo(ms) {
+  return israelIso(new Date(Date.now() + ISRAEL_OFFSET_MS - ms));
+}
+
 // ── Geocache ──────────────────────────────────────────────────────────────────
 
 let geocache = {};
@@ -70,30 +136,44 @@ let lastNominatim = 0;
 
 function cleanCityName(name) {
   let clean = name.replace(/אזור תעשייה/g, '').replace(/פארק תעשייה/g, '');
-  clean = clean.replace(/\s*-.*$/, '');      // remove " - צפון" etc.
-  clean = clean.replace(/\(.*?\)/g, '');     // remove parentheses
+  clean = clean.replace(/\s+-.*$/, '');   // " - צפון" → removed (\s+ requires space before hyphen)
+  clean = clean.replace(/\(.*?\)/g, ''); // remove parentheses
   return clean.trim();
 }
 
 async function geocodeLocation(name) {
+  // 1. Static dictionary — highest priority, never wrong
+  const cleanName = cleanCityName(name);
+  for (const key of [name, cleanName]) {
+    if (STATIC_COORDS[key]) {
+      geocache[name] = STATIC_COORDS[key];
+      saveGeoCache();
+      return geocache[name];
+    }
+  }
+  // 2. In-memory cache
   if (name in geocache) return geocache[name];
+  // 3. Nominatim — skip streets/buildings, keep everything else
   const wait = 1100 - (Date.now() - lastNominatim);
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   lastNominatim = Date.now();
   try {
-    const cleanName = cleanCityName(name);
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanName + ' ישראל')}&countrycodes=il&format=json&limit=1&accept-language=he`;
-    const resp = await fetch(url, { headers: { 'User-Agent': 'CevaAdom/1.0' } });
+    const url = `${NOM_URL}?q=${encodeURIComponent(cleanName + ' ישראל')}&countrycodes=il&format=json&limit=5&accept-language=he`;
+    const resp = await fetch(url, { headers: { 'User-Agent': 'CevaAdom/1.2' } });
     const results = await resp.json();
-    geocache[name] = results.length  // key stays as original zone name
-      ? [parseFloat(results[0].lat), parseFloat(results[0].lon)]
-      : null;
+    let coords = null;
+    if (results.length) {
+      const best = results.find(r => r.class !== 'highway' && r.class !== 'building');
+      const chosen = best || results[0];
+      coords = [parseFloat(chosen.lat), parseFloat(chosen.lon)];
+    }
+    geocache[name] = coords; // key stays as original zone name
   } catch { geocache[name] = null; }
   saveGeoCache();
   return geocache[name];
 }
 
-async function geocodeBatch(names, maxNew = 100) {
+async function geocodeBatch(names, maxNew = 250) {
   const uncached = names.filter(n => !(n in geocache)).slice(0, maxNew);
   for (const loc of uncached) await geocodeLocation(loc);
   const result = {};
@@ -103,7 +183,7 @@ async function geocodeBatch(names, maxNew = 100) {
   return result;
 }
 
-// ── Fetch from OREF ───────────────────────────────────────────────────────────
+// ── Fetch from OREF (history) ─────────────────────────────────────────────────
 
 async function fetchAndStore() {
   const resp = await fetch(OREF_URL, { headers: OREF_HEADERS });
@@ -151,30 +231,45 @@ function startFetchLoop() {
         broadcastNewAlerts(inserted);
       }
     } catch (e) { console.error('[fetch] error:', e.message); }
-    setTimeout(loop, 60000);
+    setTimeout(loop, 60_000);
   };
   loop();
 }
 
-// ── Live feed (real-time) ─────────────────────────────────────────────────────
+// ── Live feed (real-time, redalert.orielhaim.com) ─────────────────────────────
 
-// Generate a deterministic rid from alertType + city + minute (avoids duplicates within same minute)
 function simpleHash(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = Math.imul(31, h) + str.charCodeAt(i) | 0;
   return Math.abs(h);
 }
 
+// Track last active set to avoid redundant broadcasts
+let lastActiveSignature = '';
+
 async function fetchLiveAndStore() {
-  const resp = await fetch(LIVE_URL);
+  const resp = await fetch(LIVE_URL, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json' }
+  });
   const text = await resp.text();
   const trimmed = text.trim();
-  if (!trimmed || trimmed === '{}' || trimmed.startsWith('<')) return [];
+  if (!trimmed || trimmed === '{}' || trimmed.startsWith('<')) {
+    lastActiveSignature = '';
+    return [];
+  }
   const data = JSON.parse(trimmed);
-  if (typeof data !== 'object' || !Object.keys(data).length) return [];
+  if (typeof data !== 'object' || !Object.keys(data).length) {
+    lastActiveSignature = '';
+    return [];
+  }
 
-  const now    = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  const minute = now.slice(0, 16); // YYYY-MM-DD HH:MM — for dedup key
+  // Skip broadcast if same alerts as last poll
+  const sig = JSON.stringify(data);
+  if (sig === lastActiveSignature) return [];
+  lastActiveSignature = sig;
+
+  const now    = israelIso();
+  const minute = now.slice(0, 16);
 
   return new Promise((resolve, reject) => {
     const inserted = [];
@@ -213,26 +308,20 @@ function startLiveLoop() {
         broadcastNewAlerts(inserted);
       }
     } catch (e) { console.error('[live] error:', e.message); }
-    setTimeout(loop, 5000);
+    setTimeout(loop, 5_000);
   };
   loop();
 }
 
 // ── Map-data cache ────────────────────────────────────────────────────────────
 
-const mapDataCacheByHours = {}; // { [hours]: { data, time } }
-const MAP_CACHE_TTL = 60 * 1000; // 60 seconds
-
-const MAP_EXCLUDED_CATS = new Set([
-  'סיום אירוע',
-  'האירוע הסתיים',
-  'בדקות הקרובות צפויות להתקבל התרעות באזורך',
-]);
+const mapDataCacheByHours = {};
 
 // ── Query helpers ─────────────────────────────────────────────────────────────
 
-function rowToEvent(row) {
-  const locations = (row.locs || '').split('||').map(l => l.trim()).filter(Boolean);
+function rowToEvent(row, search = null) {
+  let locations = (row.locs || '').split('||').map(l => l.trim()).filter(Boolean);
+  if (search) locations.sort(key => search && !key.includes(search) ? 1 : 0);
   return {
     alertDate    : row.alert_date,
     category     : row.category,
@@ -246,16 +335,13 @@ async function queryEvents(fromIso, toIso, limit = 2000) {
   const where = [], params = [];
   if (fromIso) { where.push('alert_date >= ?'); params.push(fromIso); }
   if (toIso)   { where.push('alert_date <= ?'); params.push(toIso); }
-  let sql = `SELECT alert_date, group_concat(data,'||') AS locs, category, category_desc
-             FROM alerts`;
+  let sql = `SELECT alert_date, group_concat(data,'||') AS locs, category, category_desc FROM alerts`;
   if (where.length) sql += ' WHERE ' + where.join(' AND ');
   sql += ' GROUP BY alert_date ORDER BY alert_date DESC LIMIT ?';
   params.push(limit);
   const rows = await dbAll(sql, params);
-  return rows.map(rowToEvent);
+  return rows.map(r => rowToEvent(r));
 }
-
-// ── Server-side paginated events ──────────────────────────────────────────────
 
 async function queryEventsPaged(page, pageSize, fromIso, toIso, search) {
   const conds  = [];
@@ -285,7 +371,10 @@ async function queryEventsPaged(page, pageSize, fromIso, toIso, search) {
        GROUP BY alert_date ORDER BY alert_date DESC LIMIT ? OFFSET ?`,
       [...sParams, pageSize, offset]
     );
-    return { items: rows.map(rowToEvent), total, totalAlerts, totalLocations, page: safePage, pageSize, totalPages };
+    return {
+      items: rows.map(r => rowToEvent(r, search)),
+      total, totalAlerts, totalLocations, page: safePage, pageSize, totalPages
+    };
 
   } else {
     const where = conds.length ? ' WHERE ' + conds.join(' AND ') : '';
@@ -305,7 +394,10 @@ async function queryEventsPaged(page, pageSize, fromIso, toIso, search) {
        GROUP BY alert_date ORDER BY alert_date DESC LIMIT ? OFFSET ?`,
       [...params, pageSize, offset]
     );
-    return { items: rows.map(rowToEvent), total, totalAlerts, totalLocations, page: safePage, pageSize, totalPages };
+    return {
+      items: rows.map(r => rowToEvent(r)),
+      total, totalAlerts, totalLocations, page: safePage, pageSize, totalPages
+    };
   }
 }
 
@@ -337,7 +429,7 @@ app.get('/api/stream', (req, res) => {
 
 function broadcastNewAlerts(alerts) {
   if (!alerts.length) return;
-  Object.keys(mapDataCacheByHours).forEach(k => delete mapDataCacheByHours[k]); // invalidate all map caches
+  Object.keys(mapDataCacheByHours).forEach(k => delete mapDataCacheByHours[k]);
   const payload = `data: ${JSON.stringify(alerts)}\n\n`;
   for (const client of clients) client.write(payload);
 }
@@ -346,7 +438,7 @@ function broadcastNewAlerts(alerts) {
 
 app.get('/api/events', async (req, res) => {
   try {
-    const page     = Math.max(1, parseInt(req.query.page)     || 1);
+    const page     = Math.max(1, parseInt(req.query.page) || 1);
     const pageSize = Math.min(Math.max(1, parseInt(req.query.pageSize) || 100), 500);
     const from     = req.query.from   || null;
     const to       = req.query.to     || null;
@@ -363,7 +455,7 @@ app.get('/api/locations', async (req, res) => {
       for (const loc of ev.locations)
         freq[loc] = (freq[loc] || 0) + 1;
     const ranked = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
-    res.json(await geocodeBatch(ranked, 100));
+    res.json(await geocodeBatch(ranked, 250));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -371,7 +463,7 @@ app.get('/api/geocode', async (req, res) => {
   try {
     const names = (req.query.names || '').split(',').map(n => n.trim()).filter(Boolean);
     if (!names.length) return res.status(400).json({ error: 'missing names parameter' });
-    res.json(await geocodeBatch(names, 100));
+    res.json(await geocodeBatch(names, 250));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -379,14 +471,11 @@ app.get('/api/map-data', async (req, res) => {
   try {
     const hours = Math.min(parseInt(req.query.hours) || 24, 168);
 
-    // Serve from per-hours cache if fresh
     const cached = mapDataCacheByHours[hours];
-    if (cached && (Date.now() - cached.time) < MAP_CACHE_TTL) {
+    if (cached && (Date.now() - cached.time) < MAP_CACHE_TTL)
       return res.json(cached.data);
-    }
 
-    const since = new Date(Date.now() - hours * 3600 * 1000)
-      .toISOString().replace('T', ' ').slice(0, 19);
+    const since = israelIsoAgo(hours * 3600 * 1000);
 
     const rows = await dbAll(
       `SELECT data, alert_date, category_desc
@@ -397,7 +486,6 @@ app.get('/api/map-data', async (req, res) => {
       [since, ...MAP_EXCLUDED_CATS]
     );
 
-    // Aggregate by location (keep up to 8 latest events each)
     const byLoc = {};
     for (const row of rows) {
       const name = (row.data || '').trim();
@@ -408,19 +496,17 @@ app.get('/api/map-data', async (req, res) => {
         byLoc[name].events.push({ alertDate: row.alert_date, category_desc: row.category_desc || '' });
     }
 
-    // Geocode any missing locations (up to 50 new ones per request)
     const names = Object.keys(byLoc);
-    await geocodeBatch(names, 50);
+    await geocodeBatch(names, 250);
 
-    // Build response — only locations that have coordinates
     const locations = names
       .filter(n => geocache[n])
       .map(n => ({
-        name   : n,
-        lat    : geocache[n][0],
-        lng    : geocache[n][1],
-        count  : byLoc[n].count,
-        events : byLoc[n].events,
+        name  : n,
+        lat   : geocache[n][0],
+        lng   : geocache[n][1],
+        count : byLoc[n].count,
+        events: byLoc[n].events,
       }));
 
     const result = { generatedAt: new Date().toISOString(), hours, locations };
@@ -431,10 +517,38 @@ app.get('/api/map-data', async (req, res) => {
 
 app.get('/api/stats', async (req, res) => {
   try {
-    const { total } = await dbGet('SELECT COUNT(*) AS total FROM alerts');
+    const { total }  = await dbGet('SELECT COUNT(*) AS total FROM alerts');
     const { oldest } = await dbGet('SELECT MIN(alert_date) AS oldest FROM alerts');
     const { newest } = await dbGet('SELECT MAX(alert_date) AS newest FROM alerts');
     res.json({ total, oldest, newest });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/live', (req, res) => {
+  res.json({}); // live state is pushed via SSE; this endpoint kept for compatibility
+});
+
+app.get('/api/charts', async (req, res) => {
+  try {
+    const since = israelIsoAgo(7 * 24 * 3600 * 1000);
+    const daily = await dbAll(
+      `SELECT DATE(alert_date) AS d, COUNT(*) AS cnt
+       FROM alerts WHERE alert_date >= ?
+       GROUP BY d ORDER BY d`,
+      [since]
+    );
+    const cats = await dbAll(
+      `SELECT category_desc, COUNT(*) AS cnt
+       FROM alerts
+       WHERE alert_date >= ?
+         AND (category_desc IS NULL OR category_desc NOT IN (?, ?))
+       GROUP BY category_desc ORDER BY cnt DESC LIMIT 10`,
+      [since, 'סיום אירוע', 'האירוע הסתיים']
+    );
+    res.json({
+      daily     : daily.map(r => ({ date: r.d, count: r.cnt })),
+      categories: cats.map(r => ({ name: r.category_desc || 'אחר', count: r.cnt })),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
