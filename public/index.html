@@ -272,6 +272,31 @@
     }
     .date-input.locked::-webkit-calendar-picker-indicator { display: none; }
 
+    /* ── Stats ── */
+    #statsWrap {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      padding: 20px;
+      align-content: start;
+      overflow-y: auto;
+    }
+    .chart-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      min-height: 300px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .chart-card canvas { max-height: 320px; }
+    @media(max-width:700px){
+      #statsWrap { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
+    }
+
     /* ── Map ── */
     #mapWrap { flex: 1; display: none; flex-direction: column; position: relative; min-height: 0; }
     #alertsMap { flex: 1; min-height: 400px; height: calc(100vh - 210px); }
@@ -644,8 +669,9 @@
 <div class="controls">
   <div class="controls-top">
     <div class="view-toggle">
-      <button class="btn active" id="btnList" onclick="setView('list')">רשימה</button>
-      <button class="btn"        id="btnMap"  onclick="setView('map')">🗺 מפה</button>
+      <button class="btn active" id="btnList"  onclick="setView('list')">רשימה</button>
+      <button class="btn"        id="btnMap"   onclick="setView('map')">🗺 מפה</button>
+      <button class="btn"        id="btnStats" onclick="setView('stats')">📊 סטטיסטיקה</button>
     </div>
     <div class="map-info-wrap">
       <button class="map-info-btn" id="mapInfoBtn" onclick="toggleMapInfo(event)" aria-label="מידע על המפה">i</button>
@@ -672,6 +698,11 @@
   </div>
 </main>
 
+<div id="statsWrap" style="display:none">
+  <div class="chart-card"><canvas id="dailyChart"></canvas></div>
+  <div class="chart-card"><canvas id="categoryChart"></canvas></div>
+</div>
+
 <div id="mapWrap">
   <div id="alertsMap"></div>
   <div class="map-loading" id="mapLoading">
@@ -693,6 +724,7 @@
 
 <div id="toastContainer"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBKVd483xZtL1Jd2ns5_oTBJYK88yT2WjQ&libraries=marker"></script>
 <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.umd.js"></script>
 <script>
@@ -874,20 +906,81 @@ function filtered(){ return allEvents; } // search is handled server-side
 // ── View switching ────────────────────────────────────────────────────────
 function setView(v){
   currentView = v;
-  ['list','map'].forEach(n => {
+  ['list','map','stats'].forEach(n => {
     const btn = document.getElementById('btn' + n.charAt(0).toUpperCase() + n.slice(1));
     if (btn) btn.classList.toggle('active', n === v);
   });
-  const main    = document.getElementById('mainContent');
-  const mapWrap = document.getElementById('mapWrap');
-  if(v==='map'){
-    main.style.display    = 'none';
-    mapWrap.style.display = 'flex';
-    showMap();
-  } else {
-    main.style.display    = '';
-    mapWrap.style.display = 'none';
-    renderView();
+  const main      = document.getElementById('mainContent');
+  const mapWrap   = document.getElementById('mapWrap');
+  const statsWrap = document.getElementById('statsWrap');
+  main.style.display      = v === 'list' ? '' : 'none';
+  mapWrap.style.display   = v === 'map'  ? 'flex' : 'none';
+  statsWrap.style.display = v === 'stats'? '' : 'none';
+  if(v === 'map')   showMap();
+  if(v === 'stats') loadCharts();
+  if(v === 'list')  renderView();
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────
+let _chartDaily = null, _chartCat = null;
+
+async function loadCharts(){
+  try {
+    const data = await fetch('/api/charts').then(r => r.json());
+
+    // Daily bar chart
+    if(_chartDaily) _chartDaily.destroy();
+    _chartDaily = new Chart(document.getElementById('dailyChart'), {
+      type: 'bar',
+      data: {
+        labels  : data.daily.map(d => d.date),
+        datasets: [{
+          label          : 'התרעות ליום',
+          data           : data.daily.map(d => d.count),
+          backgroundColor: 'rgba(220,38,38,0.75)',
+          borderColor    : '#dc2626',
+          borderWidth    : 1,
+          borderRadius   : 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: '#e2e8f0' } },
+          title : { display: true, text: 'התרעות ב-7 ימים האחרונים', color: '#f1f5f9', font: { size: 15 } }
+        },
+        scales: {
+          x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,.07)' } },
+          y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,.07)' }, beginAtZero: true }
+        }
+      }
+    });
+
+    // Category doughnut chart
+    if(_chartCat) _chartCat.destroy();
+    const palette = ['#dc2626','#b91c1c','#1e3a5f','#1d4ed8','#2563eb','#3b82f6','#7c3aed','#db2777','#d97706','#059669'];
+    _chartCat = new Chart(document.getElementById('categoryChart'), {
+      type: 'doughnut',
+      data: {
+        labels  : data.categories.map(c => c.name),
+        datasets: [{
+          data           : data.categories.map(c => c.count),
+          backgroundColor: palette,
+          borderColor    : '#1a1f2e',
+          borderWidth    : 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#e2e8f0', padding: 12 } },
+          title : { display: true, text: 'התפלגות לפי סוג התרעה', color: '#f1f5f9', font: { size: 15 } }
+        }
+      }
+    });
+  } catch(e) {
+    document.getElementById('statsWrap').innerHTML =
+      `<div class="status-msg">שגיאה בטעינת נתונים: ${e.message}</div>`;
   }
 }
 

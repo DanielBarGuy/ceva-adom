@@ -542,6 +542,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._handle_geocache_all()
         elif path == '/api/live':
             return self._handle_live()
+        elif path == '/api/charts':
+            return self._handle_charts()
         elif path == '/api/map-data':
             return self._handle_map_data(params)
         elif path == '/api/stream':
@@ -681,6 +683,33 @@ class Handler(SimpleHTTPRequestHandler):
         with _live_alert_lock:
             alert = _live_alert
         self._send_json(200, alert if alert is not None else {})
+
+    # ── /api/charts ───────────────────────────────────────────────────────────
+    def _handle_charts(self):
+        try:
+            since = (datetime.now(ISRAEL_TZ) - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+            with _db_lock:
+                con = sqlite3.connect(DB_FILE)
+                try:
+                    daily = con.execute(
+                        "SELECT DATE(alert_date) AS d, COUNT(*) FROM alerts "
+                        "WHERE alert_date >= ? GROUP BY d ORDER BY d",
+                        (since,)
+                    ).fetchall()
+                    cats = con.execute(
+                        "SELECT category_desc, COUNT(*) FROM alerts "
+                        "WHERE alert_date >= ? AND (category_desc IS NULL OR category_desc NOT IN (?,?)) "
+                        "GROUP BY category_desc ORDER BY 2 DESC LIMIT 10",
+                        (since, 'סיום אירוע', 'האירוע הסתיים')
+                    ).fetchall()
+                finally:
+                    con.close()
+            self._send_json(200, {
+                'daily'     : [{'date': r[0], 'count': r[1]} for r in daily],
+                'categories': [{'name': r[0] or 'אחר', 'count': r[1]} for r in cats],
+            })
+        except Exception as e:
+            self._send_json(500, {'error': str(e)})
 
     # ── /api/map-data ──────────────────────────────────────────────────────────
     def _handle_map_data(self, params):

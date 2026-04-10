@@ -411,6 +411,28 @@ def _api_stats(_params=None):
     total, oldest, newest = _db_stats()
     return 200, {'total': total, 'oldest': oldest, 'newest': newest}
 
+def _api_charts(_params=None):
+    since = (datetime.now(ISRAEL_TZ) - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        with sqlite3.connect(DB_FILE) as con:
+            daily = con.execute(
+                "SELECT DATE(alert_date) AS d, COUNT(*) FROM alerts "
+                "WHERE alert_date >= ? GROUP BY d ORDER BY d",
+                (since,)
+            ).fetchall()
+            cats = con.execute(
+                "SELECT category_desc, COUNT(*) FROM alerts "
+                "WHERE alert_date >= ? AND (category_desc IS NULL OR category_desc NOT IN (?,?)) "
+                "GROUP BY category_desc ORDER BY 2 DESC LIMIT 10",
+                (since, 'סיום אירוע', 'האירוע הסתיים')
+            ).fetchall()
+        return 200, {
+            'daily'     : [{'date': r[0], 'count': r[1]} for r in daily],
+            'categories': [{'name': r[0] or 'אחר', 'count': r[1]} for r in cats],
+        }
+    except Exception as e:
+        return 500, {'error': str(e)}
+
 def _api_live(_params=None):
     with _live_alert_lock:
         alert = _live_alert
@@ -421,6 +443,7 @@ _ROUTES = {
     '/api/locations': _api_locations,
     '/api/geocode'  : _api_geocode,
     '/api/stats'    : _api_stats,
+    '/api/charts'   : _api_charts,
     '/api/live'     : _api_live,
 }
 
