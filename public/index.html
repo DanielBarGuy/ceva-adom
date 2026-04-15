@@ -1171,6 +1171,159 @@ const DARK_STYLE = [
   {featureType:'water',elementType:'geometry',stylers:[{color:'#0e1626'}]},
 ];
 
+// ── GeoJSON polygon layer ─────────────────────────────────────────────────
+
+let   geoJsonLoaded = false;
+const geoJsonIndex  = new Map(); // normName → Feature (O(1) lookup)
+const activeAlerts  = new Map(); // cityName → { startTime, clearTimer, count, events, zone }
+let   animRunning   = false;
+
+// Normalize name for fuzzy matching (mirrors server cleanCityName)
+function normName(n) {
+  return String(n)
+    .replace(/["\u05f4\u05f3]/g, '')
+    .replace(/\s*[-–]\s*.*/,     '')
+    .replace(/\(.*?\)/g,          '')
+    .replace(/אזור תעשייה|פארק תעשייה/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Register a feature under all its name variants
+function indexFeature(feature) {
+  const props = [
+    'name','NAME','name_he','SETL_NAME','Muni_Heb','Muni_Name','shem_yishuv','heb_name',
+  ];
+  for (const p of props) {
+    const v = feature.getProperty(p);
+    if (!v) continue;
+    geoJsonIndex.set(v,           feature);
+    geoJsonIndex.set(normName(v), feature);
+  }
+}
+
+// Find feature by city name with fallback normalization
+function findFeature(name) {
+  return geoJsonIndex.get(name) || geoJsonIndex.get(normName(name)) || null;
+}
+
+const GEO_DEFAULT_STYLE = {
+  fillColor   : '#ffffff',
+  fillOpacity : 0.03,
+  strokeColor : 'rgba(255,255,255,0.10)',
+  strokeWeight: 0.5,
+  zIndex      : 1,
+};
+
+async function loadGeoJson() {
+  try {
+    const resp = await fetch('/israel-cities.geojson');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const geojson = await resp.json();
+
+    gMap.data.addGeoJson(geojson);
+    gMap.data.forEach(f => indexFeature(f));
+    gMap.data.setStyle(GEO_DEFAULT_STYLE);
+
+    // Click on any polygon
+    gMap.data.addListener('click', ev => {
+      const name = ev.feature.getProperty('name')
+                || ev.feature.getProperty('SETL_NAME')
+                || ev.feature.getProperty('Muni_Heb')
+                || '–';
+      const alert = activeAlerts.get(name) || activeAlerts.get(normName(name));
+      if (alert) {
+        gInfoWindow.setContent(buildPopup(name, alert.events, alert.count, alert.zone));
+      } else {
+        gInfoWindow.setContent(
+          `<div dir="rtl" style="padding:8px 12px;font-family:var(--font);min-width:140px">
+             <div style="font-weight:700;margin-bottom:3px">📍 ${esc(name)}</div>
+             <div style="color:#94a3b8;font-size:.78rem">אין התרעה פעילה</div>
+           </div>`
+        );
+      }
+      gInfoWindow.setPosition(ev.latLng);
+      gInfoWindow.open(gMap);
+    });
+
+    geoJsonLoaded = true;
+    console.log(`[geo] GeoJSON loaded — ${geoJsonIndex.size} name keys indexed`);
+  } catch(e) {
+    console.warn('[geo] GeoJSON unavailable, using markers:', e.message);
+  }
+}
+
+// ── Single unified animation loop (all active alerts share one rAF) ───────
+
+function runAnimLoop() {
+  if (!activeAlerts.size) { animRunning = false; return; }
+  const now = Date.now();
+  for (const [name, al] of activeAlerts) {
+    const feature = findFeature(name);
+    if (!feature) continue;
+    const t       = ((now - al.startTime) % 1800) / 1800;
+    const opacity = 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(t * Math.PI * 2));
+    gMap.data.overrideStyle(feature, {
+      fillColor   : '#ff1a1a',
+      fillOpacity : opacity,
+      strokeColor : '#ff4444',
+      strokeWeight: 2.5,
+      strokeOpacity: 0.9,
+      zIndex      : 100,
+    });
+  }
+  requestAnimationFrame(runAnimLoop);
+}
+
+function ensureAnimRunning() {
+  if (!animRunning) { animRunning = true; requestAnimationFrame(runAnimLoop); }
+}
+
+// Activate (or refresh) a live alert polygon — auto-clears after autoCloseMs
+function activatePolygon(cityName, count, events, zone, autoCloseMs = 120_000) {
+  const existing = activeAlerts.get(cityName);
+  if (existing?.clearTimer) clearTimeout(existing.clearTimer);
+  const clearTimer = setTimeout(() => clearPolygonAlert(cityName), autoCloseMs);
+  activeAlerts.set(cityName, { startTime: Date.now(), clearTimer, count, events, zone });
+  ensureAnimRunning();
+}
+
+// Clear a specific alert polygon back to neutral
+function clearPolygonAlert(cityName) {
+  const al = activeAlerts.get(cityName);
+  if (al?.clearTimer) clearTimeout(al.clearTimer);
+  activeAlerts.delete(cityName);
+  const feature = findFeature(cityName);
+  if (feature) {
+    // Restore to historical style if it was highlighted, else default
+    gMap.data.revertStyle(feature);
+  }
+}
+
+// Apply static historical fill (no animation) for 24h data
+function applyHistoricalPolygons(locations) {
+  if (!geoJsonLoaded) return 0;
+  let matched = 0;
+  for (const loc of locations) {
+    const feature = findFeature(loc.name);
+    if (!feature) continue;
+    // Skip if this city has an active live alert (animation takes priority)
+    if (activeAlerts.has(loc.name)) continue;
+    const color   = zoneColor(loc.zone);
+    const opacity = Math.min(0.12 + loc.count * 0.07, 0.70);
+    gMap.data.overrideStyle(feature, {
+      fillColor   : color,
+      fillOpacity : opacity,
+      strokeColor : color,
+      strokeWeight: 1.5,
+      strokeOpacity: 0.85,
+      zIndex      : 2 + Math.min(loc.count, 20),
+    });
+    matched++;
+  }
+  return matched;
+}
+
 function initGMap(){
   if(gMap) return;
   gMap = new google.maps.Map(document.getElementById('alertsMap'),{
@@ -1181,6 +1334,7 @@ function initGMap(){
     fullscreenControl:true,
   });
   gInfoWindow = new google.maps.InfoWindow();
+  loadGeoJson(); // non-blocking — markers used as fallback until ready
 }
 
 function buildPopup(name, events, locCount, zone){
@@ -1209,37 +1363,49 @@ function buildPopup(name, events, locCount, zone){
 function placeMarkers(locations){
   if(!gMap) return;
 
-  // Build a stable signature — skip full rebuild if data hasn't changed
-  const sig = locations.map(l => `${l.name}:${l.count}:${(l.events[0]||{}).alertDate||''}`).join('|');
+  // Stable signature — skip full rebuild when data hasn't changed
+  const sig = locations.map(l=>`${l.name}:${l.count}:${(l.events[0]||{}).alertDate||''}`).join('|');
   if(sig === lastMapSig) return;
   lastMapSig = sig;
 
-  // Clear previous markers
+  // Clear previous markers & reset polygon styles
   gMarkers.forEach(m => { m.map = null; });
   gMarkers = [];
   if(gClusterer) gClusterer.clearMarkers();
+  if(geoJsonLoaded) gMap.data.setStyle(GEO_DEFAULT_STYLE);
 
-  locations.forEach(({ name, lat, lng, count, events, zone }) => {
+  // Polygon pass — apply historical fill to all matched cities
+  const polygonMatched = new Set();
+  if(geoJsonLoaded){
+    const matched = applyHistoricalPolygons(locations);
+    locations.forEach(loc => { if(findFeature(loc.name)) polygonMatched.add(loc.name); });
+    document.getElementById('mapLoadingText').textContent =
+      `${matched} יישובים על המפה (${locations.length - matched} ממתינים לגיאוקוד)`;
+  }
+
+  // Marker pass — only for cities without a polygon
+  const needsMarker = geoJsonLoaded
+    ? locations.filter(l => !polygonMatched.has(l.name))
+    : locations;
+
+  needsMarker.forEach(({ name, lat, lng, count, events, zone }) => {
     const size  = Math.min(16 + count * 4, 36);
     const color = zoneColor(zone);
-    // Lighten border: mix with white slightly
-    const dot = document.createElement('div');
+    const dot   = document.createElement('div');
     Object.assign(dot.style, {
-      width: `${size}px`, height: `${size}px`,
+      width:`${size}px`, height:`${size}px`,
       background: color,
       border: '2.5px solid rgba(255,255,255,0.55)',
-      borderRadius: '50%', display: 'flex',
-      alignItems: 'center', justifyContent: 'center',
-      color: '#fff', fontWeight: '700', fontFamily: 'sans-serif',
+      borderRadius:'50%', display:'flex',
+      alignItems:'center', justifyContent:'center',
+      color:'#fff', fontWeight:'700', fontFamily:'sans-serif',
       fontSize: count > 9 ? '10px' : '11px',
-      boxShadow: `0 0 8px ${color}88`,
-      cursor: 'pointer',
+      boxShadow:`0 0 8px ${color}88`,
+      cursor:'pointer',
     });
     dot.textContent = count;
     const marker = new google.maps.marker.AdvancedMarkerElement({
-      position : { lat, lng },
-      content  : dot,
-      zIndex   : count,
+      position:{ lat, lng }, content:dot, zIndex:count,
     });
     marker.addListener('click', () => {
       gInfoWindow.setContent(buildPopup(name, events, count, zone));
@@ -1256,21 +1422,19 @@ function placeMarkers(locations){
         map: gMap, markers: gMarkers,
         renderer: {
           render({ count, position }){
-            const size = count > 10 ? 44 : count > 3 ? 34 : 26;
-            const dot = document.createElement('div');
-            Object.assign(dot.style, {
-              width: `${size}px`, height: `${size}px`,
-              background: '#8b0000', border: '2px solid #ff4757',
-              borderRadius: '50%', display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontWeight: '700', fontFamily: 'sans-serif',
-              fontSize: count > 10 ? '13px' : '11px',
+            const size = count>10?44:count>3?34:26;
+            const dot  = document.createElement('div');
+            Object.assign(dot.style,{
+              width:`${size}px`,height:`${size}px`,
+              background:'#8b0000',border:'2px solid #ff4757',
+              borderRadius:'50%',display:'flex',
+              alignItems:'center',justifyContent:'center',
+              color:'#fff',fontWeight:'700',fontFamily:'sans-serif',
+              fontSize:count>10?'13px':'11px',
             });
             dot.textContent = count;
             return new google.maps.marker.AdvancedMarkerElement({
-              position,
-              content : dot,
-              zIndex  : 1000000 + count,
+              position, content:dot, zIndex:1000000+count,
             });
           }
         }
@@ -1417,17 +1581,34 @@ function connectStream(){
       const incoming = JSON.parse(event.data);
       if(!Array.isArray(incoming) || !incoming.length) return;
       const n = incoming.length;
-      showToast(`🚨 ${n} אזעקה${n > 1 ? 'ות' : ''} חדשה`);
+
+      // Count unique cities (not event-groups)
+      const cities = [...new Set(incoming.flatMap(ev => ev.locations || []))];
+      showToast(`🚨 ${cities.length} יישוב${cities.length !== 1 ? 'ים' : ''} באזעקה`);
+
+      // ── Live polygon flash for every alerted city ──
+      if(gMap && geoJsonLoaded){
+        for(const ev of incoming){
+          for(const cityName of (ev.locations || [])){
+            activatePolygon(
+              cityName,
+              ev.count   || 1,
+              [{ alertDate: ev.alertDate, category_desc: ev.category_desc || '' }],
+              null,        // zone unknown from SSE — null = red default
+              120_000      // auto-clear after 2 minutes
+            );
+          }
+        }
+      }
 
       if(currentView === 'map'){
-        // Debounce map refresh — avoid hammering on burst alerts
+        // Debounce full map reload — polygons already lit up instantly above
         if(mapRefreshTimer) clearTimeout(mapRefreshTimer);
         mapRefreshTimer = setTimeout(() => {
-          lastMapSig = ''; // force re-render with fresh server data
+          lastMapSig = '';
           showMap();
-        }, 1500);
+        }, 3000);
       } else {
-        // Cancel any pending poll and reload page 1 (freshest alerts)
         if(refreshTimer) clearTimeout(refreshTimer);
         loadEvents(1, false);
       }
