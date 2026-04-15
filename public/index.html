@@ -710,10 +710,16 @@
     <div id="mapLoadingText">טוען מיקומים...</div>
     <small>הטעינה הראשונה עשויה לקחת מספר שניות</small>
   </div>
-  <div class="map-legend">
-    <div style="font-weight:700;margin-bottom:3px;color:var(--text-sec)">מקרא</div>
-    <div class="map-legend-row"><div class="legend-dot"></div>יישוב עם אזעקה</div>
-    <div class="map-legend-row"><div class="legend-dot big"></div>יישוב עם אזעקות מרובות</div>
+  <div class="map-legend" id="mapLegend">
+    <div style="font-weight:700;margin-bottom:5px;color:var(--text-sec)">מקרא — אזורים</div>
+    <div class="map-legend-row"><div class="legend-dot" style="background:#ef4444"></div>עוטף עזה</div>
+    <div class="map-legend-row"><div class="legend-dot" style="background:#dc2626"></div>קו העימות</div>
+    <div class="map-legend-row"><div class="legend-dot" style="background:#f97316"></div>נגב מערבי</div>
+    <div class="map-legend-row"><div class="legend-dot" style="background:#a855f7"></div>ירושלים / יהודה</div>
+    <div class="map-legend-row"><div class="legend-dot" style="background:#22c55e"></div>דן / מרכז</div>
+    <div class="map-legend-row"><div class="legend-dot" style="background:#3b82f6"></div>גליל / גולן</div>
+    <div class="map-legend-row"><div class="legend-dot" style="background:#0891b2"></div>חיפה / קריות</div>
+    <div class="map-legend-row"><div class="legend-dot" style="background:#d63031"></div>אחר</div>
   </div>
 </div>
 
@@ -1109,6 +1115,47 @@ async function refreshDbBanner(){
   document.getElementById('dbBanner').style.display = 'flex';
 }
 
+// ── Zone color palette (Pikud HaOref zones) ───────────────────────────────
+const ZONE_COLORS = {
+  'עוטף עזה'        : '#ef4444',  // red — Gaza border
+  'קו העימות'       : '#dc2626',  // dark red — Lebanon border
+  'מערב הנגב'       : '#f97316',  // orange
+  'דרום הנגב'       : '#fb923c',  // light orange
+  'מרכז הנגב'       : '#fbbf24',  // amber
+  'דרום השפלה'      : '#f59e0b',  // yellow-orange
+  'השפלה'           : '#facc15',  // yellow
+  'מערב לכיש'       : '#fcd34d',  // yellow light
+  'לכיש'            : '#eab308',  // yellow-green
+  'ירושלים'         : '#a855f7',  // purple
+  'בית שמש'         : '#8b5cf6',  // violet
+  'יהודה'           : '#7c3aed',  // dark violet
+  'שומרון'          : '#e879f9',  // fuchsia
+  'בקעה'            : '#d946ef',  // pink-purple
+  'בקעת בית שאן'    : '#c026d3',  // magenta
+  'ים המלח'         : '#a78bfa',  // lavender
+  'ערבה'            : '#fb7185',  // rose
+  'אילת'            : '#06b6d4',  // cyan
+  'דן'              : '#22c55e',  // green — Tel Aviv area
+  'ירקון'           : '#34d399',  // emerald light
+  'שרון'            : '#6ee7b7',  // teal light
+  'חפר'             : '#10b981',  // emerald
+  'מנשה'            : '#4ade80',  // light green
+  'ואדי ערה'        : '#84cc16',  // lime
+  'חוף הכרמל'       : '#14b8a6',  // teal
+  'יערות הכרמל'     : '#2dd4bf',  // teal light
+  'חיפה'            : '#0891b2',  // dark cyan
+  'קריות'           : '#38bdf8',  // sky blue
+  'גליל תחתון'      : '#60a5fa',  // blue
+  'תבור'            : '#a3e635',  // lime-green
+  'גליל עליון'      : '#3b82f6',  // blue
+  'גולן'            : '#0ea5e9',  // sky blue
+  'קצרין'           : '#93c5fd',  // light blue
+};
+
+function zoneColor(zone) {
+  return ZONE_COLORS[zone] || '#d63031';  // fallback to default red
+}
+
 // ── Map ───────────────────────────────────────────────────────────────────
 const DARK_STYLE = [
   {elementType:'geometry',stylers:[{color:'#1d2c4d'}]},
@@ -1136,7 +1183,7 @@ function initGMap(){
   gInfoWindow = new google.maps.InfoWindow();
 }
 
-function buildPopup(name, events, locCount){
+function buildPopup(name, events, locCount, zone){
   const lines = events.map(ev=>
     `<div style="margin:3px 0;font-size:.8rem;display:flex;align-items:baseline;gap:6px">
        <span style="color:var(--red-soft);direction:ltr;font-weight:700">${fmtTime(ev.alertDate)}</span>
@@ -1146,8 +1193,13 @@ function buildPopup(name, events, locCount){
   const hidden = locCount - events.length;
   const more   = hidden > 0
     ? `<div style="color:var(--text-muted);font-size:.71rem;margin-top:4px">ועוד ${hidden}...</div>` : '';
+  const zoneHtml = zone
+    ? `<div style="margin-bottom:6px">
+         <span style="background:${zoneColor(zone)};color:#fff;padding:2px 7px;border-radius:99px;font-size:.69rem;font-weight:700">${esc(zone)}</span>
+       </div>` : '';
   return `<div dir="rtl" style="font-family:var(--font);min-width:175px;padding:10px 12px">
     <div style="font-size:.98rem;font-weight:800;color:var(--text);margin-bottom:5px">📍 ${esc(name)}</div>
+    ${zoneHtml}
     <div style="color:var(--red-bright);font-size:.8rem;margin-bottom:6px;font-weight:700">${locCount} אזעקות</div>
     <hr style="border:none;border-top:1px solid var(--border);margin:5px 0">
     ${lines}${more}
@@ -1167,16 +1219,21 @@ function placeMarkers(locations){
   gMarkers = [];
   if(gClusterer) gClusterer.clearMarkers();
 
-  locations.forEach(({ name, lat, lng, count, events }) => {
-    const size = Math.min(16 + count * 4, 36);
+  locations.forEach(({ name, lat, lng, count, events, zone }) => {
+    const size  = Math.min(16 + count * 4, 36);
+    const color = zoneColor(zone);
+    // Lighten border: mix with white slightly
     const dot = document.createElement('div');
     Object.assign(dot.style, {
       width: `${size}px`, height: `${size}px`,
-      background: '#d63031', border: '2px solid #ff7f7f',
+      background: color,
+      border: '2.5px solid rgba(255,255,255,0.55)',
       borderRadius: '50%', display: 'flex',
       alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontWeight: '700', fontFamily: 'sans-serif',
       fontSize: count > 9 ? '10px' : '11px',
+      boxShadow: `0 0 8px ${color}88`,
+      cursor: 'pointer',
     });
     dot.textContent = count;
     const marker = new google.maps.marker.AdvancedMarkerElement({
@@ -1185,7 +1242,7 @@ function placeMarkers(locations){
       zIndex   : count,
     });
     marker.addListener('click', () => {
-      gInfoWindow.setContent(buildPopup(name, events, count));
+      gInfoWindow.setContent(buildPopup(name, events, count, zone));
       gInfoWindow.open({ anchor: marker, map: gMap });
     });
     gMarkers.push(marker);

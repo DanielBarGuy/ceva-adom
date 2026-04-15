@@ -10,10 +10,17 @@ const BASE_DIR = __dirname;
 const DB_FILE  = path.join(BASE_DIR, 'alerts.db');
 const CACHE_FILE = path.join(BASE_DIR, 'geocache.json');
 
-const OREF_URL  = 'https://alerts-history.oref.org.il/Shared/Ajax/GetAlarmsHistory.aspx?lang=he&mode=1';
-const LIVE_URL  = 'https://redalert.orielhaim.com/api/active';
-const NOM_URL   = 'https://nominatim.openstreetmap.org/search';
+const OREF_URL       = 'https://alerts-history.oref.org.il/Shared/Ajax/GetAlarmsHistory.aspx?lang=he&mode=1';
+const LIVE_URL       = 'https://api.siren.co.il/active';
+const CITIES_URL     = 'https://api.siren.co.il/data/cities';
+const NOM_URL        = 'https://nominatim.openstreetmap.org/search';
 const ISRAEL_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC+3
+const SIREN_API_KEY  = 'pr_LrWyqtByaKuVHoEzBRjDnpxvDThsIrJIAVzcwJFJDpvETptpDNinmStfglznvmbR';
+const SIREN_HEADERS  = {
+  'Authorization': `Bearer ${SIREN_API_KEY}`,
+  'Accept'       : 'application/json',
+  'User-Agent'   : 'CevaAdom/2.0',
+};
 
 const OREF_HEADERS = {
   'Referer'         : 'https://www.oref.org.il/',
@@ -30,6 +37,31 @@ const MAP_EXCLUDED_CATS = new Set([
 ]);
 
 const MAP_CACHE_TTL = 60 * 1000; // 60 seconds
+
+// ── Siren city → zone lookup ─────────────────────────────────────────────────
+
+let cityZoneMap = {};  // { cityName: zoneName }
+
+async function loadSirenCities() {
+  const limit = 200;
+  let offset = 0, total = Infinity, fetched = 0;
+  try {
+    while (offset < total) {
+      const url = `${CITIES_URL}?limit=${limit}&offset=${offset}`;
+      const resp = await fetch(url, { headers: SIREN_HEADERS });
+      const json = await resp.json();
+      if (json.pagination) total = json.pagination.total;
+      for (const c of (json.data || [])) {
+        if (c.name && c.zone) cityZoneMap[c.name] = c.zone;
+      }
+      fetched += (json.data || []).length;
+      offset += limit;
+    }
+    console.log(`[siren] loaded ${fetched} cities, ${Object.keys(cityZoneMap).length} with zones`);
+  } catch (e) {
+    console.error('[siren] cities load failed:', e.message);
+  }
+}
 
 // ── Static coords — checked before Nominatim, never wrong ────────────────────
 const STATIC_COORDS = {
@@ -236,7 +268,7 @@ function startFetchLoop() {
   loop();
 }
 
-// ── Live feed (real-time, redalert.orielhaim.com) ─────────────────────────────
+// ── Live feed (real-time, api.siren.co.il) ────────────────────────────────────
 
 function simpleHash(str) {
   let h = 0;
@@ -248,9 +280,7 @@ function simpleHash(str) {
 let lastActiveSignature = '';
 
 async function fetchLiveAndStore() {
-  const resp = await fetch(LIVE_URL, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json' }
-  });
+  const resp = await fetch(LIVE_URL, { headers: SIREN_HEADERS });
   const text = await resp.text();
   const trimmed = text.trim();
   if (!trimmed || trimmed === '{}' || trimmed.startsWith('<')) {
@@ -507,6 +537,7 @@ app.get('/api/map-data', async (req, res) => {
         lng   : geocache[n][1],
         count : byLoc[n].count,
         events: byLoc[n].events,
+        zone  : cityZoneMap[n] || null,
       }));
 
     const result = { generatedAt: new Date().toISOString(), hours, locations };
@@ -555,6 +586,7 @@ app.get('/api/charts', async (req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 loadGeoCache();
+loadSirenCities();
 fetchAndStore()
   .then(items => console.log(`[init] fetched ${items.length} new alerts`))
   .catch(e => console.error('[init] fetch failed:', e.message));
