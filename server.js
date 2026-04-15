@@ -287,6 +287,8 @@ async function fetchLiveAndStore() {
     lastActiveSignature = '';
     return [];
   }
+  // Rate limit or non-JSON response — skip silently
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return [];
   const data = JSON.parse(trimmed);
   if (typeof data !== 'object' || !Object.keys(data).length) {
     lastActiveSignature = '';
@@ -338,7 +340,7 @@ function startLiveLoop() {
         broadcastNewAlerts(inserted);
       }
     } catch (e) { console.error('[live] error:', e.message); }
-    setTimeout(loop, 5_000);
+    setTimeout(loop, 10_000);
   };
   loop();
 }
