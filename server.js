@@ -561,6 +561,41 @@ app.get('/api/live', (req, res) => {
   res.json({}); // live state is pushed via SSE; this endpoint kept for compatibility
 });
 
+// ── GeoJSON — circle polygons generated from geocache + zone data ─────────
+
+function circlePolygon(lat, lng, radiusKm = 2.5, numPts = 24) {
+  const coords = [];
+  for (let i = 0; i <= numPts; i++) {
+    const angle = (i / numPts) * 2 * Math.PI;
+    const dLat  = (radiusKm / 111) * Math.sin(angle);
+    const dLng  = (radiusKm / (111 * Math.cos(lat * Math.PI / 180))) * Math.cos(angle);
+    coords.push([+(lng + dLng).toFixed(6), +(lat + dLat).toFixed(6)]);
+  }
+  return coords;
+}
+
+let geojsonCache = null;
+
+app.get('/israel-cities.geojson', (req, res) => {
+  if (!geojsonCache) {
+    const features = [];
+    for (const [name, coords] of Object.entries(geocache)) {
+      if (!coords) continue;
+      const [lat, lng] = coords;
+      features.push({
+        type      : 'Feature',
+        properties: { name, zone: cityZoneMap[name] || null },
+        geometry  : { type: 'Polygon', coordinates: [circlePolygon(lat, lng)] },
+      });
+    }
+    geojsonCache = JSON.stringify({ type: 'FeatureCollection', features });
+    console.log(`[geojson] generated ${features.length} city polygons`);
+  }
+  res.setHeader('Content-Type', 'application/geo+json');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(geojsonCache);
+});
+
 app.get('/api/charts', async (req, res) => {
   try {
     const since = israelIsoAgo(7 * 24 * 3600 * 1000);
